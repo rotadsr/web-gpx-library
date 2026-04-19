@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPX Library</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      <div class="sidebar-logo-title">
+        <span class="logo">🗺️</span>
+        <h1>GPX Library</h1>
+      </div>
+      <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" title="Collapse sidebar" aria-label="Toggle sidebar">
+        <!-- chevron left (shown when open) -->
+        <svg class="icon-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        <!-- chevron right (shown when collapsed) -->
+        <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+
+    <div id="sidebar-body">
+      <div id="search-container">
+        <input type="text" id="search-input" placeholder="Search routes…" autocomplete="off" />
+      </div>
+
+      <div id="activity-filter-section">
+        <h3>Activity</h3>
+        <div id="category-pills"></div>
+      </div>
+
+<div id="library-container">
+        <div id="library-header">
+          <span class="lib-section-label">My Library</span>
+          <div class="lib-actions">
+            <input type="file" id="import-lib-input" accept=".json" hidden />
+            <button id="btn-import-lib" class="lib-action-btn" title="Import library from JSON file">Import</button>
+            <button id="btn-export-lib" class="lib-action-btn" title="Export library to JSON file">Export</button>
+          </div>
+        </div>
+        <div id="file-tree"></div>
+      </div>
+
+      <!-- Upload zone -->
+      <div id="upload-zone" role="button" tabindex="0" title="Upload GPX files (temporary — cleared on refresh)">
+        <input type="file" id="file-input" accept=".gpx" multiple hidden />
+        <span class="upload-icon">📤</span>
+        <span class="upload-label">Upload GPX files</span>
+        <span class="upload-hint">drag &amp; drop · or click</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ─────────────────────────────────────────────────────────────── -->
+  <main id="main">
+
+    <!-- Empty state -->
+    <div id="empty-state">
+      <div class="empty-icon">🗺️</div>
+      <h2>Select a route</h2>
+      <p>Choose a GPX file from the library on the left to view it on the map.</p>
+    </div>
+
+    <!-- Route view (shown when a file is selected) -->
+    <div id="route-view" style="display:none">
+
+      <!-- Map -->
+      <div id="map-container">
+        <div id="map"></div>
+
+        <!-- Vertical toolbar (right side) -->
+        <div id="map-toolbar">
+          <button class="map-tool" id="btn-zoom-in" title="Zoom in">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button class="map-tool" id="btn-zoom-out" title="Zoom out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <div class="tool-sep"></div>
+          <button class="map-tool" id="btn-locate" title="My location">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>
+          </button>
+          <div class="tool-sep"></div>
+          <button class="map-tool" id="btn-layers" title="Change map layer">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </button>
+          <button class="map-tool" id="btn-legend" title="Legend">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><circle cx="12" cy="8" r="0.5" fill="currentColor"/></svg>
+          </button>
+          <button class="map-tool" id="btn-query" title="Query location on click">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+        </div>
+
+        <!-- Layer picker panel -->
+        <div id="layer-panel" class="map-panel" hidden>
+          <div class="panel-header">Map Layers</div>
+          <div id="layer-list"></div>
+        </div>
+
+        <!-- Legend panel -->
+        <div id="legend-panel" class="map-panel" hidden>
+          <div class="panel-header">Legend</div>
+          <div class="legend-body">
+            <div class="legend-item"><span class="leg-dot" style="background:#22c55e"></span>Start point</div>
+            <div class="legend-item"><span class="leg-dot" style="background:#ef4444"></span>End point</div>
+            <div class="legend-item"><span class="leg-line"></span>Route track</div>
+            <div class="legend-item"><span class="leg-dot" style="background:#f59e0b"></span>Elevation cursor</div>
+            <div class="legend-item"><span class="leg-dot" style="background:#3b82f6"></span>Your location</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drag-to-resize handle -->
+      <div id="split-handle" title="Drag to resize · Double-click to fit all content"><div class="split-grip"></div></div>
+
+      <!-- Details panel -->
+      <div id="details-panel">
+        <div id="route-header">
+          <div class="route-title-row">
+            <div class="route-name-group">
+              <span id="route-activity-icon" class="route-activity-icon" style="display:none"></span>
+              <h2 id="route-name"></h2>
+              <span id="route-difficulty-badge" class="route-difficulty-badge" style="display:none"></span>
+            </div>
+            <div class="unit-toggle" id="unit-toggle">
+              <span class="unit-label">Unit:</span>
+              <button class="unit-opt is-active" data-unit="metric"   title="Metric (km, m, km/h)">km</button>
+              <span  class="unit-sep">|</span>
+              <button class="unit-opt"           data-unit="imperial" title="Imperial (mi, ft, mph)">mi</button>
+            </div>
+          </div>
+          <p id="route-description"></p>
+        </div>
+
+        <div id="stats-grid">
+          <div class="stat-card">
+            <span class="stat-label">Distance</span>
+            <span class="stat-value" id="stat-distance">—</span>
+          </div>
+          <div class="stat-card editable-stat" data-editable="duration" title="Click to set a custom pace">
+            <span class="stat-label">Duration <span class="edit-hint">edit</span></span>
+            <span class="stat-value" id="stat-duration">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Elevation gain</span>
+            <span class="stat-value" id="stat-elevation-gain">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Elevation loss</span>
+            <span class="stat-value" id="stat-elevation-loss">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Max elevation</span>
+            <span class="stat-value" id="stat-max-elevation">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">↑ Avg gradient</span>
+            <span class="stat-value" id="stat-avg-gradient-up">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">↓ Avg gradient</span>
+            <span class="stat-value" id="stat-avg-gradient-down">—</span>
+          </div>
+          <div class="stat-card editable-stat" data-editable="speed" title="Click to set a custom pace">
+            <span class="stat-label">Avg speed <span class="edit-hint">edit</span></span>
+            <span class="stat-value" id="stat-avg-speed">—</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Author</span>
+            <span class="stat-value" id="stat-author" style="font-size:14px">—</span>
+          </div>
+        </div>
+
+        <!-- shown when duration/speed are manually overridden -->
+        <div id="override-bar" style="display:none">
+          <span>⚡ Custom pace active</span>
+          <button id="reset-override-btn">↺ Reset to GPX values</button>
+        </div>
+
+        <div id="chart-container" style="display:none">
+          <h3>Elevation Profile</h3>
+          <div id="chart-wrapper">
+            <canvas id="elevation-chart"></canvas>
+          </div>
+        </div>
+
+        <div id="weather-section" style="display:none">
+          <div class="weather-header">
+            <h3>7-Day Forecast</h3>
+            <span id="weather-location" class="weather-loc"></span>
+          </div>
+          <div id="weather-days"></div>
+        </div>
+      </div>
+
+    </div><!-- /route-view -->
+  </main>
+</div>
+
+<!-- ── GPX Editor Modal ──────────────────────────────────────────────────── -->
+<div id="editor-modal" class="editor-overlay">
+  <div class="editor-layout">
+
+    <!-- Left sidebar: forms -->
+    <aside class="editor-sidebar">
+      <div class="editor-sb-header">
+        <h2 class="editor-title">Edit Route</h2>
+        <button id="editor-close-btn" class="editor-close-btn" title="Close (Esc)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+
+      <div class="editor-name-row">
+        <label class="edit-label">Route name</label>
+        <input type="text" id="edit-name" class="edit-input" placeholder="Route name" />
+      </div>
+
+      <div class="editor-tabs">
+        <button class="editor-tab is-active" data-tab="info">Info</button>
+        <button class="editor-tab"           data-tab="xml">XML</button>
+      </div>
+
+      <div class="editor-pane-wrap">
+        <!-- Info pane -->
+        <div id="epane-info" class="editor-pane">
+          <div class="edit-field">
+            <label class="edit-label">Activity type</label>
+            <select id="edit-activity" class="edit-input edit-select"></select>
+          </div>
+          <div class="edit-field">
+            <label class="edit-label">Description</label>
+            <textarea id="edit-description" class="edit-textarea" rows="4" placeholder="Describe this route…"></textarea>
+          </div>
+          <p class="edit-hint-text">Click on the map to add track points. Drag existing points to reposition them. Click a point to select it.</p>
+        </div>
+
+        <!-- XML pane -->
+        <div id="epane-xml" class="editor-pane" hidden>
+          <label class="edit-label">GPX XML</label>
+          <textarea id="edit-xml" class="edit-xml-area" spellcheck="false" autocomplete="off"></textarea>
+          <button id="apply-xml-btn" class="btn-editor-sm">↺ Apply XML to map</button>
+        </div>
+      </div>
+
+      <!-- Download section (pinned to bottom) -->
+      <div class="editor-download-bar">
+        <div class="edit-field">
+          <label class="edit-label">Author <span class="required-star">*</span></label>
+          <input type="text" id="edit-author" class="edit-input" placeholder="Your name" />
+          <span class="edit-hint-text">Required to generate the GPX metadata.</span>
+        </div>
+        <button id="save-to-library-btn" class="btn-save-library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save to Library
+        </button>
+        <button id="download-gpx-btn" class="btn-download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download GPX
+        </button>
+      </div>
+    </aside>
+
+    <!-- Right: map + track-editing toolbar -->
+    <div class="editor-map-area">
+      <div class="editor-map-toolbar">
+        <span class="editor-map-hint">Click map · add point &nbsp;|&nbsp; Drag point · move &nbsp;|&nbsp; Click point · select</span>
+        <div class="editor-tool-btns">
+          <button id="tool-delete-pt" class="editor-tool-btn" disabled title="Delete selected point">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
+            Delete
+          </button>
+          <button id="tool-undo-pt" class="editor-tool-btn" title="Remove last point (or selected)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+            Undo
+          </button>
+          <button id="tool-clear-pts" class="editor-tool-btn editor-tool-danger" title="Clear all track points">Clear</button>
+        </div>
+        <span id="edit-point-count" class="edit-pt-count"></span>
+      </div>
+      <div id="editor-map"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Leaflet -->
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- App scripts -->
+<script src="js/storage.js"></script>
+<script src="js/gpxParser.js"></script>
+<script src="js/mapManager.js"></script>
+<script src="js/activities.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
