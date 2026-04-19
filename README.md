@@ -2,6 +2,8 @@
 
 A modern, feature-rich web app for managing and visualizing GPX routes. Built with **Leaflet.js** and **Chart.js**, entirely client-side with **IndexedDB** persistence.
 
+Try it live here: [web-gpx-library](https://rotadsr.github.io/web-gpx-library/)
+
 ## Features
 
 ### 📍 Route Visualization
