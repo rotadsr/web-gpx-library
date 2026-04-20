@@ -334,7 +334,7 @@
         const id = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         uploadedRoutes.push({ id, name, activity, folder: 'Uploads', source: 'upload', gpxText, tags: [], description: `Uploaded: ${file.name}` });
 
-        if (++loaded === files.length) { buildTagCloud(); renderFileTree(); }
+        if (++loaded === files.length) { renderFileTree(); }
       };
       reader.readAsText(file);
     });
