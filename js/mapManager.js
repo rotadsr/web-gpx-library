@@ -7,7 +7,7 @@ const MapManager = (() => {
 
   // ── State ───────────────────────────────────────────────────────────────────
   let map             = null;
-  let currentLayerKey = 'roadmap';
+  let currentLayerKey = 'carto-light';
   let currentTile     = null;
   let trackLine       = null;
   let startMarker     = null;
