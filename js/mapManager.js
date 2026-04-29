@@ -296,6 +296,12 @@ const MapManager = (() => {
     if (map) map.invalidateSize();
   }
 
+  function getViewState() {
+    if (!map) return { lat: 46, lng: 8, zoom: 10 };
+    const c = map.getCenter();
+    return { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
+  }
+
   return {
     showRoute, clearRoute,
     setMapType, getLayers, getCurrentLayer,
@@ -304,5 +310,6 @@ const MapManager = (() => {
     setQueryMode,
     invalidateMapSize,
     highlightPoint, hideHighlight,
+    getViewState,
   };
 })();
