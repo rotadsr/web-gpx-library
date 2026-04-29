@@ -2,6 +2,8 @@
 
 A modern, feature-rich web app for managing and visualizing GPX routes. Built with **Leaflet.js** and **Chart.js**, entirely client-side with **IndexedDB** persistence.
 
+Try it live: https://rotadsr.github.io/web-gpx-library/
+
 ## Features
 
 ### 📍 Route Visualization
@@ -168,10 +170,6 @@ Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fl
 - **Escape** — close editor modal
 - **Double-click split handle** — auto-fit map and details panel
 - **Drag split handle** — manually resize map vs. details
-
-## License
-
-[Add your license here — e.g., MIT, GPL, etc.]
 
 ## Contributing
 
