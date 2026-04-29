@@ -10,9 +10,8 @@
  */
 
 const View3D = (() => {
-  let mlMap        = null;
-  let active       = false;
-  let hoverMarker  = null;
+  let mlMap  = null;
+  let active = false;
 
   // Elevation colour ramp: blue → cyan → green → yellow → orange → red
   const RAMP = [
@@ -119,6 +118,10 @@ const View3D = (() => {
             type: 'geojson',
             data: geojson,
           },
+          'hover-point': {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          },
         },
         layers: [
           { id: 'base-layer', type: 'raster', source: 'base' },
@@ -135,6 +138,17 @@ const View3D = (() => {
             source: 'route',
             layout: { 'line-join': 'round', 'line-cap': 'round' },
             paint: { 'line-color': ['get', 'color'], 'line-width': 5 },
+          },
+          {
+            id: 'hover-point',
+            type: 'circle',
+            source: 'hover-point',
+            paint: {
+              'circle-radius': 7,
+              'circle-color': '#f59e0b',
+              'circle-stroke-color': '#ffffff',
+              'circle-stroke-width': 2,
+            },
           },
         ],
         terrain: { source: 'dem', exaggeration: 1.5 },
@@ -167,27 +181,24 @@ const View3D = (() => {
 
   function highlightPoint(point) {
     if (!active || !mlMap) return;
-    if (!hoverMarker) {
-      const el = document.createElement('div');
-      el.className = 'view3d-hover-dot';
-      hoverMarker = new maplibregl.Marker({ element: el, anchor: 'center' });
-    }
-    hoverMarker.setLngLat([point.lon, point.lat]).addTo(mlMap);
+    const src = mlMap.getSource('hover-point');
+    if (!src) return;
+    src.setData({ type: 'Feature', geometry: { type: 'Point', coordinates: [point.lon, point.lat] } });
   }
 
   function hideHighlight() {
-    if (hoverMarker) hoverMarker.remove();
+    if (!active || !mlMap) return;
+    const src = mlMap.getSource('hover-point');
+    if (src) src.setData({ type: 'FeatureCollection', features: [] });
   }
 
   function hide() {
     if (!active) return;
     active = false;
-    hideHighlight();
     document.getElementById('map-3d').style.display          = 'none';
     document.getElementById('view3d-legend').style.display   = 'none';
     document.getElementById('btn-3d').classList.remove('active');
     if (mlMap) { mlMap.remove(); mlMap = null; }
-    hoverMarker = null;
     MapManager.invalidateMapSize();
   }
 
