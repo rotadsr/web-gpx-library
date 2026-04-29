@@ -1240,9 +1240,14 @@
         onHover: (event, elements) => {
           if (elements.length > 0) {
             const pointIdx = profileIndices[elements[0].index];
-            if (currentPoints[pointIdx]) MapManager.highlightPoint(currentPoints[pointIdx]);
+            const pt = currentPoints[pointIdx];
+            if (pt) {
+              MapManager.highlightPoint(pt);
+              View3D.highlightPoint(pt);
+            }
           } else {
             MapManager.hideHighlight();
+            View3D.hideHighlight();
           }
         }
       }
