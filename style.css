@@ -1506,3 +1506,53 @@ body.is-resizing {
 
 /* ── Scrollbar polish ───────────────────────────────────────────────────────── */
 * { scrollbar-width: thin; scrollbar-color: #e2e8f0 transparent; }
+
+/* ── 3D on-map overlay ──────────────────────────────────────────────────────── */
+
+/* Covers the Leaflet map entirely; deck.gl renders its canvas inside here */
+#map-3d {
+  position: absolute;
+  inset: 0;
+  z-index: 500;   /* above Leaflet layers (~200-400), below toolbar (1001) */
+  display: none;
+}
+
+/* Elevation legend – floats at bottom-centre of the map when 3D is active */
+#view3d-legend {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: rgba(15, 23, 42, 0.82);
+  backdrop-filter: blur(6px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.view3d-ele-label {
+  font-size: 11px;
+  color: #94a3b8;
+  min-width: 40px;
+}
+.view3d-ele-label:last-child { text-align: right; }
+
+.view3d-gradient-bar {
+  width: 120px;
+  height: 7px;
+  border-radius: 4px;
+  background: linear-gradient(to right,
+    #3b82f6, #06b6d4, #22c55e, #facc15, #f97316, #ef4444);
+}
+
+/* Active state for the 3D toolbar button */
+#btn-3d.active {
+  background: var(--primary);
+  color: #fff;
+}
+#btn-3d.active:hover { background: var(--primary-dark); }

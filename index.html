@@ -6,6 +6,7 @@
   <title>GPX Library</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css" />
 </head>
 <body>
 
@@ -98,6 +99,20 @@
           <button class="map-tool" id="btn-query" title="Query location on click">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
+          <div class="tool-sep"></div>
+          <button class="map-tool" id="btn-3d" title="3D route view">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          </button>
+        </div>
+
+        <!-- deck.gl 3D overlay — rendered over the Leaflet map when active -->
+        <div id="map-3d"></div>
+
+        <!-- Elevation legend (visible when 3D is active) -->
+        <div id="view3d-legend" style="display:none">
+          <span id="view3d-ele-min" class="view3d-ele-label">—</span>
+          <div class="view3d-gradient-bar"></div>
+          <span id="view3d-ele-max" class="view3d-ele-label">—</span>
         </div>
 
         <!-- Layer picker panel -->
@@ -309,12 +324,15 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<!-- MapLibre GL JS (3D terrain) -->
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js"></script>
 <!-- App scripts -->
 <script src="js/storage.js"></script>
 <script src="js/gpxParser.js"></script>
 <script src="js/mapManager.js"></script>
 <script src="js/activities.js"></script>
 <script src="js/editor.js"></script>
+<script src="js/view3d.js"></script>
 <script src="js/app.js"></script>
 
 </body>

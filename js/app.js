@@ -843,6 +843,7 @@
   // ── Route loading ─────────────────────────────────────────────────────────────
 
   async function loadRoute(route, listItem) {
+    View3D.hide(); // exit 3D view when switching routes
     document.querySelectorAll('.route-item').forEach(el => el.classList.remove('active'));
     listItem.classList.add('active');
     activeRouteId = route.id;
@@ -1855,6 +1856,10 @@
     queryBtn.addEventListener('click', () => {
       const active = queryBtn.classList.toggle('active');
       MapManager.setQueryMode(active);
+    });
+
+    document.getElementById('btn-3d').addEventListener('click', () => {
+      if (currentPoints.length >= 2) View3D.show(currentPoints);
     });
 
     document.addEventListener('click', e => {

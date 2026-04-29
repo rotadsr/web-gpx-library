@@ -1,6 +1,6 @@
 # GPX Library 🗺️
 
-A modern, feature-rich web app for managing and visualizing GPX routes. Built with **Leaflet.js** and **Chart.js**, entirely client-side with **IndexedDB** persistence.
+A modern, feature-rich web app for managing and visualizing GPX routes. Built with **Leaflet.js**, **Chart.js**, and **MapLibre GL JS**, entirely client-side with **IndexedDB** persistence.
 
 Try it live: https://rotadsr.github.io/web-gpx-library/
 
@@ -10,6 +10,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Interactive map with multiple tile layers (OpenStreetMap, OpenTopoMap, Esri, etc.)
 - Route track display with start (🟢) and end (🔴) point markers
 - Real-time elevation cursor on the map
+- **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude
 
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
@@ -78,6 +79,7 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 
 - **Frontend**: Vanilla JavaScript (no frameworks)
 - **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers
+- **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
 - **Storage**: Browser IndexedDB (client-side, no server)
 - **APIs**: 
@@ -95,6 +97,7 @@ web-gpx-library/
 │   ├── storage.js          # IndexedDB wrapper
 │   ├── gpxParser.js        # GPX parsing & stats
 │   ├── mapManager.js       # Leaflet integration
+│   ├── view3d.js           # MapLibre GL 3D terrain view
 │   ├── activities.js       # Activity catalogue
 │   └── editor.js           # Route editor modal
 └── README.md               # This file
@@ -136,7 +139,7 @@ Then open `http://localhost:8000` in your browser.
 - Safari 10+
 - Edge 15+
 
-(Requires IndexedDB support — all modern browsers)
+(Requires IndexedDB and WebGL support — all modern browsers)
 
 ## Features Breakdown
 
@@ -167,7 +170,7 @@ Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fl
 
 ## Keyboard Shortcuts
 
-- **Escape** — close editor modal
+- **Escape** — close editor modal or exit 3D terrain view
 - **Double-click split handle** — auto-fit map and details panel
 - **Drag split handle** — manually resize map vs. details
 
