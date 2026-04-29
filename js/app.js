@@ -837,7 +837,7 @@
     if (f.includes('cycl') || f.includes('bike'))         return '🚴';
     if (f.includes('run'))                                 return '🏃';
     if (f.includes('ski'))                                 return '⛷️';
-    return '🗺️';
+    return '📁';
   }
 
   // ── Route loading ─────────────────────────────────────────────────────────────
@@ -1304,6 +1304,25 @@
 
   let selectedDayIndex = null;
 
+  function dayConditionScore(code, precip, wind) {
+    let score = 0;
+    if      (code === 0)  score += 0;
+    else if (code <= 3)   score += 10;
+    else if (code <= 48)  score += 35;  // fog
+    else if (code <= 57)  score += 50;  // drizzle
+    else if (code <= 65)  score += 65;  // rain
+    else if (code <= 67)  score += 75;  // freezing rain
+    else if (code <= 77)  score += 80;  // snow
+    else if (code <= 82)  score += 60;  // rain showers
+    else if (code <= 86)  score += 75;  // snow showers
+    else                  score += 100; // thunderstorm
+    score += Math.min(precip * 4, 40);
+    if (wind > 60)      score += 30;
+    else if (wind > 40) score += 15;
+    else if (wind > 25) score += 5;
+    return score;
+  }
+
   function renderWeatherDays(daily) {
     const daysEl   = document.getElementById('weather-days');
     const hourlyEl = document.getElementById('weather-hourly');
@@ -1313,11 +1332,17 @@
             precipitation_sum, windspeed_10m_max } = daily;
 
     const isImperial = units === 'imperial';
-    const todayStr   = new Date().toISOString().slice(0, 10);
 
     selectedDayIndex = null;
     hourlyEl.style.display = 'none';
     daysEl.innerHTML = '';
+
+    // Score each day; identify best and not-recommended days
+    const scores = time.map((_, i) =>
+      dayConditionScore(weathercode[i], precipitation_sum[i], windspeed_10m_max[i])
+    );
+    const minScore = Math.min(...scores);
+    const bestIdx  = minScore < 30 ? scores.indexOf(minScore) : -1;
 
     time.forEach((dateStr, i) => {
       const date    = new Date(dateStr + 'T12:00:00');
@@ -1347,8 +1372,11 @@
         ? `${Math.round(wind * 0.621371)} mph`
         : `${Math.round(wind)} km/h`;
 
+      const score = scores[i];
       const card = document.createElement('div');
-      card.className = 'weather-day' + (dateStr === todayStr ? ' is-today' : '');
+      card.className = 'weather-day' +
+        (i === bestIdx      ? ' is-best' : '') +
+        (score >= 70        ? ' is-bad'  : '');
       card.title = desc + ' — click for hourly';
       card.innerHTML = `
         <div class="wd-row1">
@@ -1395,6 +1423,14 @@
     const toF = c => Math.round(c * 9 / 5 + 32);
     const toMph = k => Math.round(k * 0.621371);
 
+    // Compute scores for all hours of this day
+    const dayIndices = time.reduce((acc, ts, j) => { if (ts.startsWith(dateStr)) acc.push(j); return acc; }, []);
+    const hourScores = dayIndices.map(j =>
+      dayConditionScore(weathercode[j], (precipitation_probability[j] ?? 0) / 10, windspeed_10m[j])
+    );
+    const minHourScore = Math.min(...hourScores);
+    const bestHourIdx  = minHourScore < 30 ? dayIndices[hourScores.indexOf(minHourScore)] : -1;
+
     hourlyEl.innerHTML = '';
     const scroll = document.createElement('div');
     scroll.className = 'wh-scroll';
@@ -1410,9 +1446,12 @@
       const wind = isImperial ? toMph(windspeed_10m[j]) : Math.round(windspeed_10m[j]);
       const windUnit = isImperial ? 'mph' : 'km/h';
       const prob = precipitation_probability[j] ?? 0;
+      const hScore = dayConditionScore(code, prob / 10, windspeed_10m[j]);
 
       const chip = document.createElement('div');
-      chip.className = 'weather-hour';
+      chip.className = 'weather-hour' +
+        (j === bestHourIdx ? ' is-best' : '') +
+        (hScore >= 70      ? ' is-bad'  : '');
       chip.innerHTML = `
         <span class="wh-time">${hour}</span>
         <span class="wh-icon">${wmoIcon(code)}</span>
