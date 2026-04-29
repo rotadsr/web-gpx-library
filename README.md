@@ -10,7 +10,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Interactive map with multiple tile layers (OpenStreetMap, OpenTopoMap, Esri, etc.)
 - Route track display with start (🟢) and end (🔴) point markers
 - Real-time elevation cursor on the map
-- **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude
+- **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
 
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
