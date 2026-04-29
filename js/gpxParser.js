@@ -91,13 +91,9 @@ const GPXParser = (() => {
                avgSpeed: null, cumulativeDistances: [] };
     }
 
-    let totalDistance    = 0;
-    let elevationGain    = 0;
-    let elevationLoss    = 0;
-    let uphillDistance   = 0;   // km while ascending
-    let downhillDistance = 0;   // km while descending
+    let totalDistance = 0;
+    let elevationGain = 0;
     const cumulativeDistances = [0];
-    const ELE_THRESHOLD = 2; // metres — ignore noise below this
 
     for (let i = 1; i < points.length; i++) {
       const d = haversine(points[i - 1].lat, points[i - 1].lon,
@@ -109,19 +105,15 @@ const GPXParser = (() => {
       const e2 = points[i].ele;
       if (e1 !== null && e2 !== null) {
         const diff = e2 - e1;
-        if (diff > ELE_THRESHOLD) {
-          elevationGain    += diff;
-          uphillDistance   += d;
-        } else if (diff < -ELE_THRESHOLD) {
-          elevationLoss    += Math.abs(diff);
-          downhillDistance += d;
-        }
+        if (diff > 0) elevationGain += diff;
       }
     }
 
     const elevations = points.map(p => p.ele).filter(e => e !== null);
     const maxElevation = elevations.length ? Math.max(...elevations) : null;
     const minElevation = elevations.length ? Math.min(...elevations) : null;
+    const elevationRange = maxElevation !== null && minElevation !== null
+      ? Math.round(maxElevation - minElevation) : null;
 
     const times = points.map(p => p.time).filter(Boolean);
     let totalTime = null;
@@ -131,21 +123,16 @@ const GPXParser = (() => {
       if (totalTime > 0) avgSpeed = (totalDistance / totalTime) * 3600; // km/h
     }
 
-    const avgUphillGradient   = uphillDistance   > 0
-      ? (elevationGain / (uphillDistance   * 1000)) * 100 : null;
-    const avgDownhillGradient = downhillDistance > 0
-      ? (elevationLoss / (downhillDistance * 1000)) * 100 : null;
+    const avgUphillGradient = totalDistance > 0 && elevationRange !== null
+      ? (elevationRange / (totalDistance * 1000)) * 100 : null;
 
     return {
       totalDistance,
       elevationGain: Math.round(elevationGain),
-      elevationLoss: Math.round(elevationLoss),
+      elevationRange,
       maxElevation: maxElevation !== null ? Math.round(maxElevation) : null,
       minElevation: minElevation !== null ? Math.round(minElevation) : null,
-      uphillDistance,
-      downhillDistance,
       avgUphillGradient,
-      avgDownhillGradient,
       totalTime,
       avgSpeed,
       cumulativeDistances,
