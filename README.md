@@ -2,8 +2,6 @@
 
 A modern, feature-rich web app for managing and visualizing GPX routes. Built with **Leaflet.js** and **Chart.js**, entirely client-side with **IndexedDB** persistence.
 
-Try it live here: [web-gpx-library](https://rotadsr.github.io/web-gpx-library/)
-
 ## Features
 
 ### 📍 Route Visualization
@@ -13,7 +11,7 @@ Try it live here: [web-gpx-library](https://rotadsr.github.io/web-gpx-library/)
 
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
-- **Route statistics**: distance, duration, elevation gain/loss, gradients, speed
+- **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed
 - **Difficulty rating** — smart algorithm based on distance, elevation, and gradient
 - **7-day weather forecast** — powered by Open-Meteo API (no key required)
 
@@ -143,8 +141,8 @@ Then open `http://localhost:8000` in your browser.
 ### Difficulty Rating Algorithm
 Routes are scored based on:
 - **Distance** (base points per km)
-- **Elevation gain** (adjusted by gradient)
-- **Average uphill gradient** (steeper = harder)
+- **Total gain** (accumulated uphill elevation, adjusted by gradient)
+- **Gradient** (steeper = harder; computed as elevation range ÷ total distance)
 - Category-specific thresholds (cycling is "easier" than mountaineering at equal distance)
 
 Levels: 🟢 Easy, 🟡 Moderate, 🔴 Hard, ⚫ Expert
@@ -160,7 +158,7 @@ Levels: 🟢 Easy, 🟡 Moderate, 🔴 Hard, ⚫ Expert
 ### Elevation Profile
 - Visual representation of elevation vs. distance
 - Hover to see exact elevation and gradient at any point
-- Gradient shows as an arrow: ↑ uphill, → flat, ↓ downhill
+- Gradient per segment shown as an arrow: ↑ uphill, → flat, ↓ downhill
 
 ### Unit Toggle
 Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fly.
@@ -172,7 +170,8 @@ Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fl
 - **Drag split handle** — manually resize map vs. details
 
 ## License
-[MIT](/LICENSE)
+
+[Add your license here — e.g., MIT, GPL, etc.]
 
 ## Contributing
 
