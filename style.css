@@ -810,9 +810,13 @@ body.is-resizing {
   transition: border-color 0.15s;
 }
 .weather-day:hover { border-color: var(--primary); }
-.weather-day.is-today {
-  background: #eff6ff;
-  border-color: var(--primary);
+.weather-day.is-best {
+  background: #f0fdf4;
+  border-color: #22c55e;
+}
+.weather-day.is-bad {
+  background: #fef2f2;
+  border-color: #ef4444;
 }
 
 /* Row 1: weekday · day+month · icon */
@@ -849,6 +853,30 @@ body.is-resizing {
   padding: 16px 0;
   text-align: center;
   grid-column: 1 / -1;
+}
+
+.weather-legend {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.wl-item {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid;
+}
+.wl-best    { background: #f0fdf4; border-color: #22c55e; color: #15803d; }
+.wl-neutral { background: var(--bg); border-color: var(--border); color: var(--text-muted); }
+.wl-bad     { background: #fef2f2; border-color: #ef4444; color: #b91c1c; }
+
+.weather-disclaimer {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
 }
 
 /* Clickable / selected day card */
@@ -891,6 +919,8 @@ body.is-resizing {
   transition: border-color 0.12s;
 }
 .weather-hour:hover { border-color: var(--primary); }
+.weather-hour.is-best { background: #f0fdf4; border-color: #22c55e; }
+.weather-hour.is-bad  { background: #fef2f2; border-color: #ef4444; }
 
 .wh-time  { font-size: 9px; font-weight: 700; color: var(--text-muted); letter-spacing: 0.3px; }
 .wh-icon  { font-size: 16px; line-height: 1.2; }
