@@ -20,8 +20,40 @@
   // Stats state — stats are always stored in metric internally
   let currentStats     = null;
   let currentMeta      = null;
+  let currentActivity  = null;   // resolved activity key for the active route
   let overrideDuration = null;   // user-set seconds; null = use GPX value
   let units            = 'metric'; // 'metric' | 'imperial'
+
+  // User-defined empty folders (names of folders with no routes yet)
+  let customFolders = JSON.parse(localStorage.getItem('gpx-library-folders') || '[]');
+
+  function saveCustomFolders() {
+    localStorage.setItem('gpx-library-folders', JSON.stringify(customFolders));
+  }
+
+  function getAllFolderNames() {
+    const fromRoutes = savedRoutes.map(r => r.folder).filter(Boolean);
+    return [...new Set([...fromRoutes, ...customFolders])].sort();
+  }
+
+  // Fallback speeds (km/h) used when GPX has no timestamps
+  const DEFAULT_SPEEDS = {
+    hiking:         4,
+    mountainSports: 3,
+    cycling:        20,
+    snow:           5,
+    running:        10,
+    water:          6,
+  };
+
+  function getDefaultSpeed(activityKey) {
+    const cat = getActivityCategory(activityKey);
+    return DEFAULT_SPEEDS[cat] || DEFAULT_SPEEDS.hiking;
+  }
+
+  // Chart view mode
+  let chartMode        = 'elevation'; // 'elevation' | 'gradient'
+  let chartSegmentData = null;        // { profile, gradients, dFactor, eFactor } for plugin
 
   // Weather state
   let currentWeatherData = null; // raw daily object from Open-Meteo (metric)
@@ -130,6 +162,7 @@
     const importBtn   = document.getElementById('btn-import-lib');
     const importInput = document.getElementById('import-lib-input');
 
+    document.getElementById('btn-new-folder')?.addEventListener('click', createNewFolder);
     exportBtn?.addEventListener('click', doExport);
     importBtn?.addEventListener('click', () => importInput.click());
     importInput?.addEventListener('change', async () => {
@@ -334,7 +367,7 @@
         const id = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
         uploadedRoutes.push({ id, name, activity, folder: 'Uploads', source: 'upload', gpxText, tags: [], description: `Uploaded: ${file.name}` });
 
-        if (++loaded === files.length) { renderFileTree(); }
+        if (++loaded === files.length) { buildCategoryPills(); renderFileTree(); }
       };
       reader.readAsText(file);
     });
@@ -439,29 +472,224 @@
   function appendFolderGroups(container, routes) {
     const byFolder = {};
     routes.forEach(r => (byFolder[r.folder] = byFolder[r.folder] || []).push(r));
+    customFolders.forEach(f => { if (!byFolder[f]) byFolder[f] = []; });
 
     Object.keys(byFolder).sort().forEach(folder => {
       const group = document.createElement('div');
       group.className = 'folder-group';
+      const isEmpty = byFolder[folder].length === 0;
 
       const header = document.createElement('div');
       header.className = 'folder-header';
-      header.innerHTML = `<span class="folder-icon">📁</span>${folder}
-        <span class="folder-count">${byFolder[folder].length}</span>`;
+
+      const iconSpan = document.createElement('span');
+      iconSpan.className = 'folder-icon';
+      iconSpan.textContent = getFolderIcon(folder);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'folder-name';
+      nameSpan.textContent = folder;
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'folder-count';
+      countSpan.textContent = byFolder[folder].length;
+
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'folder-actions';
+
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'folder-action-btn';
+      renameBtn.title = 'Rename folder';
+      renameBtn.innerHTML = SVG_PENCIL;
+      renameBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        startFolderRename(nameSpan, folder, iconSpan);
+      });
+      actionsDiv.appendChild(renameBtn);
+
+      if (isEmpty) {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'folder-action-btn';
+        delBtn.title = 'Delete empty folder';
+        delBtn.innerHTML = SVG_TRASH;
+        delBtn.addEventListener('click', e => {
+          e.stopPropagation();
+          customFolders = customFolders.filter(f => f !== folder);
+          saveCustomFolders();
+          renderFileTree();
+        });
+        actionsDiv.appendChild(delBtn);
+      }
+
+      header.appendChild(iconSpan);
+      header.appendChild(nameSpan);
+      header.appendChild(countSpan);
+      header.appendChild(actionsDiv);
       header.addEventListener('click', () => group.classList.toggle('collapsed'));
       group.appendChild(header);
 
       const list = document.createElement('ul');
       list.className = 'route-list';
       byFolder[folder].forEach(route => list.appendChild(buildRouteItem(route)));
+      if (isEmpty) {
+        const hint = document.createElement('li');
+        hint.className = 'folder-empty-hint';
+        hint.textContent = 'No routes yet';
+        list.appendChild(hint);
+      }
       group.appendChild(list);
       container.appendChild(group);
     });
   }
 
-  const SVG_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`;
-  const SVG_TRASH  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
-  const SVG_SAVE   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
+  function startFolderRename(nameSpan, currentName, iconSpan) {
+    const input = document.createElement('input');
+    input.className = 'folder-name-input';
+    input.value = currentName;
+
+    let committed = false;
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+      const newName = input.value.trim();
+      nameSpan.textContent = newName || currentName;
+      input.replaceWith(nameSpan);
+      if (newName && newName !== currentName) {
+        iconSpan.textContent = getFolderIcon(newName);
+        await renameFolder(currentName, newName);
+      }
+    };
+
+    nameSpan.replaceWith(input);
+    input.focus();
+    input.select();
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { committed = true; input.replaceWith(nameSpan); }
+    });
+  }
+
+  async function renameFolder(oldName, newName) {
+    const toUpdate = savedRoutes.filter(r => r.folder === oldName);
+    for (const route of toUpdate) {
+      route.folder = newName;
+      await Storage.saveRoute(route);
+    }
+    const ci = customFolders.indexOf(oldName);
+    if (ci >= 0) { customFolders[ci] = newName; saveCustomFolders(); }
+    if (toUpdate.length > 0) backupNeeded = true;
+    renderFileTree();
+  }
+
+  function createNewFolder() {
+    const existing = getAllFolderNames();
+    let name = 'New Folder';
+    let i = 2;
+    while (existing.includes(name)) name = `New Folder ${i++}`;
+    customFolders.push(name);
+    saveCustomFolders();
+    renderFileTree();
+    requestAnimationFrame(() => {
+      const tree = document.getElementById('file-tree');
+      for (const span of tree.querySelectorAll('.folder-name')) {
+        if (span.textContent === name) {
+          startFolderRename(span, name, span.previousElementSibling);
+          break;
+        }
+      }
+    });
+  }
+
+  let activeFolderPicker = null;
+
+  function showFolderPicker(anchorEl, route) {
+    if (activeFolderPicker) { activeFolderPicker.remove(); activeFolderPicker = null; }
+
+    const picker = document.createElement('div');
+    picker.className = 'folder-picker';
+    activeFolderPicker = picker;
+
+    const hdr = document.createElement('div');
+    hdr.className = 'folder-picker-header';
+    hdr.textContent = 'Move to folder';
+    picker.appendChild(hdr);
+
+    getAllFolderNames().forEach(f => {
+      const item = document.createElement('div');
+      item.className = 'folder-picker-item' + (route.folder === f ? ' current' : '');
+      item.innerHTML = `<span>${getFolderIcon(f)}</span><span>${f}</span>`;
+      if (route.folder !== f) {
+        item.addEventListener('click', () => {
+          picker.remove(); activeFolderPicker = null;
+          moveRouteToFolder(route, f);
+        });
+      }
+      picker.appendChild(item);
+    });
+
+    const div = document.createElement('div');
+    div.className = 'folder-picker-divider';
+    picker.appendChild(div);
+
+    const newItem = document.createElement('div');
+    newItem.className = 'folder-picker-item folder-picker-new';
+    newItem.innerHTML = '<span>+</span><span>New folder…</span>';
+    newItem.addEventListener('click', () => {
+      picker.remove(); activeFolderPicker = null;
+      const existing = getAllFolderNames();
+      let name = 'New Folder';
+      let i = 2;
+      while (existing.includes(name)) name = `New Folder ${i++}`;
+      customFolders.push(name);
+      saveCustomFolders();
+      moveRouteToFolder(route, name);
+      requestAnimationFrame(() => {
+        const tree = document.getElementById('file-tree');
+        for (const span of tree.querySelectorAll('.folder-name')) {
+          if (span.textContent === name) {
+            startFolderRename(span, name, span.previousElementSibling);
+            break;
+          }
+        }
+      });
+    });
+    picker.appendChild(newItem);
+
+    document.body.appendChild(picker);
+    const rect = anchorEl.getBoundingClientRect();
+    picker.style.left = Math.min(rect.left, window.innerWidth - 190) + 'px';
+    const spaceBelow = window.innerHeight - rect.bottom;
+    picker.style.top = spaceBelow >= picker.offsetHeight + 8
+      ? (rect.bottom + 4) + 'px'
+      : (rect.top - picker.offsetHeight - 4) + 'px';
+
+    const close = e => {
+      if (!picker.contains(e.target)) {
+        picker.remove(); activeFolderPicker = null;
+        document.removeEventListener('mousedown', close, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', close, true), 0);
+  }
+
+  async function moveRouteToFolder(route, newFolder) {
+    if (route.folder === newFolder) return;
+    try {
+      route.folder = newFolder;
+      await Storage.saveRoute(route);
+      backupNeeded = true;
+      renderFileTree();
+    } catch (err) {
+      console.error('Move error:', err);
+      alert('Could not move route: ' + err.message);
+    }
+  }
+
+  const SVG_PENCIL      = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`;
+  const SVG_TRASH       = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+  const SVG_SAVE        = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
+  const SVG_MOVE_FOLDER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 17 15 14"/></svg>`;
 
   function buildRouteItem(route) {
     const li = document.createElement('li');
@@ -491,6 +719,16 @@
       saveBtn.innerHTML = SVG_SAVE;
       saveBtn.addEventListener('click', e => { e.stopPropagation(); saveUploadToLibrary(route); });
       actions.appendChild(saveBtn);
+    }
+
+    // Blue move-to-folder button — saved routes only
+    if (route.source === 'saved') {
+      const moveBtn = document.createElement('button');
+      moveBtn.className = 'route-action-btn btn-route-move';
+      moveBtn.title = 'Move to folder';
+      moveBtn.innerHTML = SVG_MOVE_FOLDER;
+      moveBtn.addEventListener('click', e => { e.stopPropagation(); showFolderPicker(moveBtn, route); });
+      actions.appendChild(moveBtn);
     }
 
     // Green edit button — all routes
@@ -636,6 +874,7 @@
 
       // Activity icon: prefer route definition, fall back to GPX <trk><type>
       const resolvedActivity = route.activity || parsed.metadata.activity || null;
+      currentActivity = resolvedActivity;
       setActivityIcon(resolvedActivity);
 
       // Difficulty badge
@@ -658,6 +897,10 @@
     currentMeta      = meta;
     currentStats     = stats;
     overrideDuration = null;
+    chartMode        = 'elevation';
+    document.querySelectorAll('.chart-mode-btn').forEach(b =>
+      b.classList.toggle('is-active', b.dataset.mode === 'elevation')
+    );
     updateStatDisplay();
   }
 
@@ -666,8 +909,13 @@
     if (!currentStats) return;
 
     const dist  = currentStats.totalDistance;
-    const secs  = overrideDuration !== null ? overrideDuration : currentStats.totalTime;
-    const speed = secs && secs > 0 ? (dist / secs) * 3600 : currentStats.avgSpeed;
+    let secs  = overrideDuration !== null ? overrideDuration : currentStats.totalTime;
+    let speed = secs && secs > 0 ? (dist / secs) * 3600 : currentStats.avgSpeed;
+
+    if (!secs && dist) {
+      speed = getDefaultSpeed(currentActivity);
+      secs  = (dist / speed) * 3600;
+    }
 
     document.getElementById('stat-distance').textContent =
       fmtDist(dist);
@@ -675,20 +923,16 @@
       GPXParser.formatDuration(secs);
     document.getElementById('stat-elevation-gain').textContent =
       currentStats.elevationGain ? `+${fmtElev(currentStats.elevationGain)}` : '—';
-    document.getElementById('stat-elevation-loss').textContent =
-      currentStats.elevationLoss ? `−${fmtElev(currentStats.elevationLoss)}` : '—';
+    document.getElementById('stat-elevation-range').textContent =
+      currentStats.elevationRange !== null ? fmtElev(currentStats.elevationRange) : '—';
     document.getElementById('stat-max-elevation').textContent =
       currentStats.maxElevation  ? fmtElev(currentStats.maxElevation)  : '—';
+    document.getElementById('stat-min-elevation').textContent =
+      currentStats.minElevation  !== null ? fmtElev(currentStats.minElevation) : '—';
 
-    // ↑ Uphill-only average gradient
-    const upGrad = currentStats.avgUphillGradient;
-    document.getElementById('stat-avg-gradient-up').textContent =
-      upGrad   !== null ? `+${upGrad.toFixed(1)}%`  : '—';
-
-    // ↓ Downhill-only average gradient
-    const downGrad = currentStats.avgDownhillGradient;
-    document.getElementById('stat-avg-gradient-down').textContent =
-      downGrad !== null ? `−${downGrad.toFixed(1)}%` : '—';
+    const grad = currentStats.avgUphillGradient;
+    document.getElementById('stat-gradient').textContent =
+      grad !== null ? `${grad.toFixed(1)}%` : '—';
 
     document.getElementById('stat-avg-speed').textContent =
       speed ? fmtSpeed(speed) : '—';
@@ -703,17 +947,20 @@
   }
 
   function clearStats() {
+    currentActivity = null;
     setActivityIcon(null);
     setDifficultyBadge(null);
-    ['stat-distance','stat-duration','stat-elevation-gain','stat-elevation-loss',
-     'stat-max-elevation','stat-avg-gradient-up','stat-avg-gradient-down','stat-avg-speed','stat-author']
+    ['stat-distance','stat-duration','stat-elevation-gain','stat-elevation-range',
+     'stat-max-elevation','stat-min-elevation','stat-gradient','stat-avg-speed','stat-author']
       .forEach(id => { document.getElementById(id).textContent = '…'; });
     document.getElementById('override-bar').style.display = 'none';
     document.querySelectorAll('[data-editable]').forEach(c => c.classList.remove('is-overridden'));
     // Reset weather
     currentWeatherData = null;
+    selectedDayIndex   = null;
     document.getElementById('weather-section').style.display = 'none';
     document.getElementById('weather-days').innerHTML = '';
+    document.getElementById('weather-hourly').style.display = 'none';
     document.getElementById('weather-location').textContent = '';
   }
 
@@ -726,7 +973,9 @@
     // Duration card: click → edit in H:MM; commit → update speed
     durationCard.addEventListener('click', () => {
       if (!currentStats || durationCard.classList.contains('editing')) return;
-      const secs = overrideDuration !== null ? overrideDuration : currentStats.totalTime;
+      let secs = overrideDuration !== null ? overrideDuration : currentStats.totalTime;
+      if (!secs && currentStats.totalDistance)
+        secs = (currentStats.totalDistance / getDefaultSpeed(currentActivity)) * 3600;
       if (!secs) return;
 
       startEditing(
@@ -748,7 +997,9 @@
     // Speed card: click → edit in current units; commit → update duration
     speedCard.addEventListener('click', () => {
       if (!currentStats || speedCard.classList.contains('editing')) return;
-      const baseSecs  = overrideDuration !== null ? overrideDuration : currentStats.totalTime;
+      let baseSecs  = overrideDuration !== null ? overrideDuration : currentStats.totalTime;
+      if (!baseSecs && currentStats.totalDistance)
+        baseSecs = (currentStats.totalDistance / getDefaultSpeed(currentActivity)) * 3600;
       const baseSpeed = baseSecs ? (currentStats.totalDistance / baseSecs) * 3600 : currentStats.avgSpeed;
       if (!baseSpeed) return;
 
@@ -816,6 +1067,67 @@
 
   // ── Elevation chart ───────────────────────────────────────────────────────────
 
+  // ── Gradient color scale ──────────────────────────────────────────────────────
+
+  function gradientSegmentColor(pct) {
+    if (pct === null || pct === undefined) return 'rgba(100,116,139,0.3)';
+    if (pct < -0.5) return '#22c55e';   // downhill — green
+    if (pct <= 0.5) return '#93c5fd';   // flat — light blue
+
+    // Uphill: interpolate through yellow → orange → red → dark red (0.5% … 15%+)
+    const t = Math.min((pct - 0.5) / 14.5, 1);
+    const stops = [
+      [254, 240, 138],   // #fef08a  light yellow  (~0.5 %)
+      [251, 191,  36],   // #fbbf24  amber          (~5 %)
+      [249, 115,  22],   // #f97316  orange         (~10 %)
+      [239,  68,  68],   // #ef4444  red            (~13 %)
+      [127,  29,  29],   // #7f1d1d  dark red       (≥15 %)
+    ];
+    const seg = t * (stops.length - 1);
+    const lo  = Math.floor(seg);
+    const hi  = Math.min(lo + 1, stops.length - 1);
+    const u   = seg - lo;
+    const r   = Math.round(stops[lo][0] + u * (stops[hi][0] - stops[lo][0]));
+    const g   = Math.round(stops[lo][1] + u * (stops[hi][1] - stops[lo][1]));
+    const b   = Math.round(stops[lo][2] + u * (stops[hi][2] - stops[lo][2]));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Chart.js plugin — draws gradient-colored trapezoids in gradient mode
+  Chart.register({
+    id: 'gradientBands',
+    beforeDatasetsDraw(chart) {
+      if (chartMode !== 'gradient' || !chartSegmentData) return;
+      const { ctx, chartArea, scales } = chart;
+      const { profile, gradients, dFactor, eFactor } = chartSegmentData;
+      const xScale = scales.x;
+      const yScale = scales.y;
+      const yBase  = yScale.getPixelForValue(yScale.min);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+      ctx.clip();
+
+      for (let i = 1; i < profile.length; i++) {
+        const x0 = xScale.getPixelForValue(parseFloat((profile[i - 1].dist * dFactor).toFixed(2)));
+        const x1 = xScale.getPixelForValue(parseFloat((profile[i].dist     * dFactor).toFixed(2)));
+        const y0 = yScale.getPixelForValue(Math.round(profile[i - 1].ele   * eFactor));
+        const y1 = yScale.getPixelForValue(Math.round(profile[i].ele       * eFactor));
+
+        ctx.fillStyle = gradientSegmentColor(gradients[i]);
+        ctx.beginPath();
+        ctx.moveTo(x0, yBase);
+        ctx.lineTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.lineTo(x1, yBase);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+  });
+
   function renderElevationChart(points, stats) {
     const profile = GPXParser.buildElevationProfile(points, stats);
     if (!profile.length) {
@@ -842,12 +1154,17 @@
     });
     const maxDist = parseFloat((stats.totalDistance * dFactor).toFixed(2));
 
+    // Expose segment data for the gradient-bands plugin
+    chartSegmentData = { profile, gradients, dFactor, eFactor };
+
     if (elevationChart) { elevationChart.destroy(); elevationChart = null; }
 
     const ctx = document.getElementById('elevation-chart').getContext('2d');
-    const gradient = ctx.createLinearGradient(0, 0, 0, 200);
-    gradient.addColorStop(0, 'rgba(59,130,246,0.35)');
-    gradient.addColorStop(1, 'rgba(59,130,246,0.02)');
+    const isGradient = chartMode === 'gradient';
+
+    const areaGradient = ctx.createLinearGradient(0, 0, 0, 200);
+    areaGradient.addColorStop(0, 'rgba(59,130,246,0.35)');
+    areaGradient.addColorStop(1, 'rgba(59,130,246,0.02)');
 
     const profileIndices = profile.map(p => {
       const cumDists = stats.cumulativeDistances;
@@ -866,10 +1183,10 @@
         datasets: [{
           label: `Elevation (${elevUnit})`,
           data: values,
-          fill: true,
-          backgroundColor: gradient,
-          borderColor: '#3b82f6',
-          borderWidth: 2,
+          fill: !isGradient,
+          backgroundColor: isGradient ? 'transparent' : areaGradient,
+          borderColor: isGradient ? 'rgba(255,255,255,0.55)' : '#3b82f6',
+          borderWidth: isGradient ? 1.5 : 2,
           tension: 0.35,
           pointRadius: 0,
           pointHitRadius: 12,
@@ -936,51 +1253,60 @@
   async function loadWeatherForecast(points) {
     if (!points || !points.length) return;
 
-    const { lat, lon } = points[0];
-    const section = document.getElementById('weather-section');
-    const daysEl  = document.getElementById('weather-days');
-    const locEl   = document.getElementById('weather-location');
+    // Use geographic centroid for better accuracy across the whole route
+    const lat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+    const lon = points.reduce((s, p) => s + p.lon, 0) / points.length;
 
-    section.style.display = 'block';
+    const section   = document.getElementById('weather-section');
+    const daysEl    = document.getElementById('weather-days');
+    const hourlyEl  = document.getElementById('weather-hourly');
+    const locEl     = document.getElementById('weather-location');
+
+    section.style.display   = 'block';
+    hourlyEl.style.display  = 'none';
     daysEl.innerHTML = '<p class="weather-loading">Loading forecast…</p>';
     locEl.textContent = '';
 
-    // Location name via Nominatim (low zoom → city/region level)
+    // Location name via Nominatim (zoom 10 → municipality level)
     try {
       const nr = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=8`,
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&zoom=10`,
         { headers: { 'Accept-Language': 'en' } }
       );
       const nd = await nr.json();
       const a  = nd.address || {};
-      const place = a.city || a.town || a.village || a.county || a.state || '';
+      const place = a.city || a.town || a.village || a.municipality || a.county || a.state || '';
       const country = a.country_code ? a.country_code.toUpperCase() : '';
       locEl.textContent = [place, country].filter(Boolean).join(', ');
     } catch (_) {
       locEl.textContent = `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
     }
 
-    // Weather forecast
+    // Weather forecast — daily + hourly in one request
     try {
       const params = new URLSearchParams({
         latitude:      lat.toFixed(4),
         longitude:     lon.toFixed(4),
         daily:         'weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum,windspeed_10m_max',
+        hourly:        'temperature_2m,apparent_temperature,precipitation_probability,weathercode,windspeed_10m',
         timezone:      'auto',
         forecast_days: 7,
       });
       const wr = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
       if (!wr.ok) throw new Error('HTTP ' + wr.status);
       const wd = await wr.json();
-      currentWeatherData = wd.daily;
-      renderWeatherDays(currentWeatherData);
+      currentWeatherData = { daily: wd.daily, hourly: wd.hourly };
+      renderWeatherDays(currentWeatherData.daily);
     } catch (err) {
       daysEl.innerHTML = '<p class="weather-error">Could not load forecast.</p>';
     }
   }
 
+  let selectedDayIndex = null;
+
   function renderWeatherDays(daily) {
-    const daysEl = document.getElementById('weather-days');
+    const daysEl   = document.getElementById('weather-days');
+    const hourlyEl = document.getElementById('weather-hourly');
     if (!daysEl || !daily) return;
 
     const { time, weathercode, temperature_2m_max, temperature_2m_min,
@@ -989,10 +1315,12 @@
     const isImperial = units === 'imperial';
     const todayStr   = new Date().toISOString().slice(0, 10);
 
+    selectedDayIndex = null;
+    hourlyEl.style.display = 'none';
     daysEl.innerHTML = '';
 
     time.forEach((dateStr, i) => {
-      const date    = new Date(dateStr + 'T12:00:00'); // noon avoids timezone date shifts
+      const date    = new Date(dateStr + 'T12:00:00');
       const dow     = date.toLocaleDateString('en', { weekday: 'short' });
       const dayNum  = date.getDate();
       const monAbbr = date.toLocaleDateString('en', { month: 'short' });
@@ -1021,7 +1349,7 @@
 
       const card = document.createElement('div');
       card.className = 'weather-day' + (dateStr === todayStr ? ' is-today' : '');
-      card.title = desc;
+      card.title = desc + ' — click for hourly';
       card.innerHTML = `
         <div class="wd-row1">
           <span class="wd-dow">${dow}</span>
@@ -1036,8 +1364,67 @@
           <span>💧${precipStr}</span>
           <span>💨${windStr}</span>
         </div>`;
+
+      card.addEventListener('click', () => {
+        const wasSelected = selectedDayIndex === i;
+        daysEl.querySelectorAll('.weather-day').forEach(c => c.classList.remove('is-selected'));
+        if (wasSelected) {
+          selectedDayIndex = null;
+          hourlyEl.style.display = 'none';
+        } else {
+          selectedDayIndex = i;
+          card.classList.add('is-selected');
+          renderHourlyForecast(dateStr);
+        }
+      });
+
       daysEl.appendChild(card);
     });
+  }
+
+  function renderHourlyForecast(dateStr) {
+    const hourlyEl = document.getElementById('weather-hourly');
+    if (!hourlyEl || !currentWeatherData?.hourly) return;
+
+    const { time, temperature_2m, apparent_temperature,
+            precipitation_probability, weathercode, windspeed_10m } = currentWeatherData.hourly;
+
+    const isImperial = units === 'imperial';
+    const tUnit      = isImperial ? '°F' : '°C';
+
+    const toF = c => Math.round(c * 9 / 5 + 32);
+    const toMph = k => Math.round(k * 0.621371);
+
+    hourlyEl.innerHTML = '';
+    const scroll = document.createElement('div');
+    scroll.className = 'wh-scroll';
+
+    time.forEach((ts, j) => {
+      if (!ts.startsWith(dateStr)) return;
+
+      const hour = ts.slice(11, 16); // "HH:MM"
+      const code = weathercode[j];
+
+      const temp = isImperial ? toF(temperature_2m[j]) : Math.round(temperature_2m[j]);
+      const feel = isImperial ? toF(apparent_temperature[j]) : Math.round(apparent_temperature[j]);
+      const wind = isImperial ? toMph(windspeed_10m[j]) : Math.round(windspeed_10m[j]);
+      const windUnit = isImperial ? 'mph' : 'km/h';
+      const prob = precipitation_probability[j] ?? 0;
+
+      const chip = document.createElement('div');
+      chip.className = 'weather-hour';
+      chip.innerHTML = `
+        <span class="wh-time">${hour}</span>
+        <span class="wh-icon">${wmoIcon(code)}</span>
+        <span class="wh-temp">${temp}${tUnit}</span>
+        <span class="wh-feel">feels ${feel}${tUnit}</span>
+        <span class="wh-prob">💧${prob}%</span>
+        <span class="wh-wind">💨${wind} ${windUnit}</span>`;
+      scroll.appendChild(chip);
+    });
+
+    hourlyEl.appendChild(scroll);
+    hourlyEl.style.display = 'block';
   }
 
   // WMO weather interpretation codes → emoji + description
@@ -1378,6 +1765,17 @@
     // Editable stats
     setupEditableStats();
 
+    // Chart mode toggle (Elevation | Gradient)
+    document.querySelectorAll('.chart-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        chartMode = btn.dataset.mode;
+        document.querySelectorAll('.chart-mode-btn').forEach(b =>
+          b.classList.toggle('is-active', b.dataset.mode === chartMode)
+        );
+        if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats);
+      });
+    });
+
     // Unit toggle (km | mi)
     document.querySelectorAll('.unit-opt').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1387,7 +1785,7 @@
         );
         updateStatDisplay();
         if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats);
-        if (currentWeatherData) renderWeatherDays(currentWeatherData);
+        if (currentWeatherData) renderWeatherDays(currentWeatherData.daily);
       });
     });
 
