@@ -40,6 +40,7 @@
         <div id="library-header">
           <span class="lib-section-label">My Library</span>
           <div class="lib-actions">
+            <button id="btn-new-folder" class="lib-action-btn" title="Create new folder">+ Folder</button>
             <input type="file" id="import-lib-input" accept=".json" hidden />
             <button id="btn-import-lib" class="lib-action-btn" title="Import library from JSON file">Import</button>
             <button id="btn-export-lib" class="lib-action-btn" title="Export library to JSON file">Export</button>
@@ -150,24 +151,24 @@
             <span class="stat-value" id="stat-duration">—</span>
           </div>
           <div class="stat-card">
-            <span class="stat-label">Elevation gain</span>
+            <span class="stat-label">Total gain</span>
             <span class="stat-value" id="stat-elevation-gain">—</span>
           </div>
           <div class="stat-card">
-            <span class="stat-label">Elevation loss</span>
-            <span class="stat-value" id="stat-elevation-loss">—</span>
+            <span class="stat-label">Elev. range</span>
+            <span class="stat-value" id="stat-elevation-range">—</span>
           </div>
           <div class="stat-card">
             <span class="stat-label">Max elevation</span>
             <span class="stat-value" id="stat-max-elevation">—</span>
           </div>
           <div class="stat-card">
-            <span class="stat-label">↑ Avg gradient</span>
-            <span class="stat-value" id="stat-avg-gradient-up">—</span>
+            <span class="stat-label">Min elevation</span>
+            <span class="stat-value" id="stat-min-elevation">—</span>
           </div>
           <div class="stat-card">
-            <span class="stat-label">↓ Avg gradient</span>
-            <span class="stat-value" id="stat-avg-gradient-down">—</span>
+            <span class="stat-label">Gradient</span>
+            <span class="stat-value" id="stat-gradient">—</span>
           </div>
           <div class="stat-card editable-stat" data-editable="speed" title="Click to set a custom pace">
             <span class="stat-label">Avg speed <span class="edit-hint">edit</span></span>
@@ -186,7 +187,13 @@
         </div>
 
         <div id="chart-container" style="display:none">
-          <h3>Elevation Profile</h3>
+          <div class="chart-header">
+            <h3>Elevation Profile</h3>
+            <div class="chart-mode-toggle">
+              <button class="chart-mode-btn is-active" data-mode="elevation">Elevation</button>
+              <button class="chart-mode-btn" data-mode="gradient">Gradient</button>
+            </div>
+          </div>
           <div id="chart-wrapper">
             <canvas id="elevation-chart"></canvas>
           </div>
@@ -198,6 +205,7 @@
             <span id="weather-location" class="weather-loc"></span>
           </div>
           <div id="weather-days"></div>
+          <div id="weather-hourly" style="display:none"></div>
         </div>
       </div>
 
