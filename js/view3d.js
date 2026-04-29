@@ -10,8 +10,9 @@
  */
 
 const View3D = (() => {
-  let mlMap  = null;
-  let active = false;
+  let mlMap        = null;
+  let active       = false;
+  let hoverMarker  = null;
 
   // Elevation colour ramp: blue → cyan → green → yellow → orange → red
   const RAMP = [
@@ -164,13 +165,29 @@ const View3D = (() => {
     }
   }
 
+  function highlightPoint(point) {
+    if (!active || !mlMap) return;
+    if (!hoverMarker) {
+      const el = document.createElement('div');
+      el.className = 'view3d-hover-dot';
+      hoverMarker = new maplibregl.Marker({ element: el, anchor: 'center' });
+    }
+    hoverMarker.setLngLat([point.lon, point.lat]).addTo(mlMap);
+  }
+
+  function hideHighlight() {
+    if (hoverMarker) hoverMarker.remove();
+  }
+
   function hide() {
     if (!active) return;
     active = false;
+    hideHighlight();
     document.getElementById('map-3d').style.display          = 'none';
     document.getElementById('view3d-legend').style.display   = 'none';
     document.getElementById('btn-3d').classList.remove('active');
     if (mlMap) { mlMap.remove(); mlMap = null; }
+    hoverMarker = null;
     MapManager.invalidateMapSize();
   }
 
@@ -179,5 +196,5 @@ const View3D = (() => {
     if (e.key === 'Escape' && active) hide();
   });
 
-  return { show, hide };
+  return { show, hide, highlightPoint, hideHighlight };
 })();
