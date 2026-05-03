@@ -13,6 +13,7 @@
   let elevationChart  = null;
   let currentPoints   = [];
   let activeRouteId   = null;
+  let currentGpxText  = null;
 
   // Activity / category filter
   let activeCategory = null;   // null = all, or a CATEGORIES key like 'cycling'
@@ -148,6 +149,8 @@
 
     buildCategoryPills();
     renderFileTree();
+
+    checkSharedRouteUrl();
 
     document.getElementById('search-input').addEventListener('input', e => {
       searchQuery = e.target.value.toLowerCase().trim();
@@ -840,6 +843,78 @@
     return '📁';
   }
 
+  // ── Share via URL ─────────────────────────────────────────────────────────────
+
+  function shareRoute() {
+    if (!currentGpxText) return;
+    const compressed = LZString.compressToEncodedURIComponent(currentGpxText);
+    const shareUrl = window.location.origin + window.location.pathname + '#data=' + compressed;
+
+    const btn = document.getElementById('btn-share-route');
+
+    const writeToClipboard = (text) => {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text);
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.cssText = 'position:fixed;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      return Promise.resolve();
+    };
+
+    writeToClipboard(shareUrl)
+      .then(() => {
+        btn.classList.add('copied');
+        setTimeout(() => btn.classList.remove('copied'), 1800);
+        showShareToast('Share link copied to clipboard!');
+      })
+      .catch(() => showShareToast('Could not copy — please copy the URL manually.'));
+  }
+
+  function showShareToast(msg) {
+    let toast = document.getElementById('share-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'share-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.classList.add('show');
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  async function checkSharedRouteUrl() {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#data=')) return;
+    const encoded = hash.slice(6);
+    try {
+      const gpxText = LZString.decompressFromEncodedURIComponent(encoded);
+      if (!gpxText) return;
+      const parsed = GPXParser.parse(gpxText);
+      const routeName = parsed.metadata?.name || 'Shared Route';
+      const sharedRoute = {
+        id: 'shared-' + Date.now(),
+        name: routeName,
+        gpxText,
+        source: 'upload',
+        tags: [],
+        folder: null,
+      };
+      uploadedRoutes.push(sharedRoute);
+      buildCategoryPills();
+      renderFileTree();
+      const li = document.querySelector(`.route-item[data-id="${sharedRoute.id}"]`);
+      if (li) await loadRoute(sharedRoute, li);
+    } catch (err) {
+      console.warn('Failed to load shared route from URL:', err);
+    }
+  }
+
   // ── Route loading ─────────────────────────────────────────────────────────────
 
   async function loadRoute(route, listItem) {
@@ -865,6 +940,7 @@
         throw new Error('No GPX data available');
       }
 
+      currentGpxText = xmlText;
       const parsed = GPXParser.parse(xmlText);
       currentPoints = parsed.points;
 
@@ -1833,6 +1909,9 @@
         if (currentWeatherData) renderWeatherDays(currentWeatherData.daily);
       });
     });
+
+    // Share route button
+    document.getElementById('btn-share-route').addEventListener('click', shareRoute);
 
     // Map toolbar
     document.getElementById('btn-zoom-in') .addEventListener('click', () => MapManager.zoomIn());
