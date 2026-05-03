@@ -1980,6 +1980,67 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   background: rgba(59,130,246,0.12);
 }
 
+/* Piste legend overlay */
+#piste-legend {
+  position: absolute;
+  top: 16px;
+  right: 52px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  color: #f1f5f9;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  pointer-events: none;
+  min-width: 130px;
+}
+.piste-legend-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #94a3b8;
+  margin-bottom: 7px;
+}
+.piste-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 4px;
+}
+.piste-legend-row:last-child { margin-bottom: 0; }
+.piste-swatch {
+  display: inline-block;
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.piste-swatch-lift {
+  background: repeating-linear-gradient(
+    90deg,
+    #94a3b8 0px, #94a3b8 5px,
+    transparent 5px, transparent 10px
+  );
+  opacity: 0.7;
+}
+
+/* Piste tooltip */
+.piste-tooltip {
+  background: rgba(15,23,42,0.88) !important;
+  border: none !important;
+  color: #f1f5f9 !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  padding: 3px 8px !important;
+}
+.piste-tooltip::before { display: none !important; }
+
+/* Ski button active state */
+#btn-ski { font-size: 14px; }
+#btn-ski.active { background: rgba(59,130,246,0.15); color: var(--primary); }
+
 /* ── Overview mode: map fills route-view, bottom bar hidden ─────────────────── */
 #route-view.overview-active #split-handle  { display: none !important; }
 #route-view.overview-active #details-panel { display: none !important; }

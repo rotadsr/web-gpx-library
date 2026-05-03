@@ -12,6 +12,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Route track display with start (🟢) and end (🔴) point markers
 - Real-time elevation cursor on the map
 - **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
+- **Ski resort piste overlay** — colour-coded run difficulty (🟢 beginner → 🔵 easy → 🔴 intermediate → ⚫ advanced, dashed lifts) loaded automatically for 35 resorts across the Alps, Andorra, and Spain
 
 ### 🗺️ Overview Mode
 - **Show all routes** on the map at once with the "Show all" button
@@ -133,6 +134,7 @@ No installation needed — just open the app in your browser (GitHub Pages link)
   - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
   - [Nominatim](https://nominatim.org/) — reverse geocoding for location search (free)
+  - [Overpass API](https://overpass-api.de/) — ski resort piste & lift data from OpenStreetMap (free; results cached 24 h in localStorage)
 
 ## File Structure
 
@@ -178,6 +180,7 @@ Then open `http://localhost:8000` in your browser.
 - **All data stays in your browser.** No server, no tracking, no cloud sync.
 - IndexedDB is local to your device and browser.
 - Route difficulty and geocoded locations are cached in localStorage for fast filtering.
+- Ski resort piste data is cached in localStorage (24-hour TTL) and never leaves your browser.
 - Export your library regularly for backup.
 - Clearing browser site data will delete your library (export first!).
 
@@ -200,6 +203,23 @@ Routes are scored based on:
 - Category-specific thresholds (cycling is "easier" than mountaineering at equal distance)
 
 Levels: 🟢 Easy, 🟡 Moderate, 🔴 Hard, ⚫ Expert
+
+### Ski Resort Piste Overlay
+When the app loads, it fetches piste and lift data from OpenStreetMap (via Overpass API) for 35 ski resorts and draws them as colour-coded polylines directly on the map:
+
+| Colour | Difficulty |
+|--------|-----------|
+| 🟢 Green | Beginner (novice) |
+| 🔵 Blue | Easy |
+| 🔴 Red | Intermediate |
+| ⚫ Black | Advanced |
+| 🟠 Orange | Expert / double-black |
+| 🟣 Purple | Freeride |
+| — Dashed grey | Lifts & aerial ways |
+
+Resort data is cached in localStorage for 24 hours so subsequent page loads are instant. The first ever load fetches resorts sequentially with a short gap to respect Overpass rate limits — all data appears progressively on the map.
+
+**Covered regions:** Andorra (Grandvalira, Ordino Arcalís, Pal-Arinsal), Spain (Baqueira Beret, Formigal, Cerler, La Molina, Sierra Nevada), France (Chamonix, Les 3 Vallées, Tignes/Val d'Isère, Paradiski, Alpe d'Huez, Portes du Soleil, Serre Chevalier), Switzerland (Verbier, Zermatt, Jungfrau, Davos Klosters, St. Moritz, Saas-Fee, Laax-Flims), Italy (Cervinia, Courmayeur, Livigno, Alta Badia, Cortina, Sestriere), Austria (Arlberg, Ischgl, Sölden, Kitzbühel, Saalbach, Schladming), Germany (Garmisch-Partenkirchen).
 
 ### Sorting Options
 - **A → Z / Z → A** — alphabetical by name
