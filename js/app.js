@@ -861,22 +861,36 @@
       const resp = await fetch('https://0x0.st/', { method: 'POST', body: formData });
       if (!resp.ok) throw new Error('Upload failed (' + resp.status + ')');
 
-      const fileUrl = (await resp.text()).trim();              // e.g. https://0x0.st/Abc.gpx
-      const x0id   = fileUrl.replace('https://0x0.st/', ''); // e.g. Abc.gpx
+      const fileUrl  = (await resp.text()).trim();
+      const x0id     = fileUrl.replace('https://0x0.st/', '');
       const shareUrl = window.location.origin + window.location.pathname + '?x0=' + x0id;
 
-      await writeToClipboard(shareUrl);
-      btn.classList.add('copied');
-      label.textContent = 'Copied!';
-      setTimeout(() => { btn.classList.remove('copied'); label.textContent = 'Share'; }, 2000);
-      showShareToast('Share link copied to clipboard!');
+      openShareModal(shareUrl);
 
     } catch (err) {
-      label.textContent = 'Share';
       showShareToast('Could not create share link: ' + err.message);
     } finally {
       btn.disabled = false;
+      label.textContent = 'Share';
     }
+  }
+
+  function openShareModal(url) {
+    const modal    = document.getElementById('share-modal');
+    const input    = document.getElementById('share-url-input');
+    const copyBtn  = document.getElementById('share-copy-btn');
+
+    input.value = url;
+    copyBtn.textContent = 'Copy';
+    copyBtn.classList.remove('copied');
+    modal.style.display = 'flex';
+
+    // Select text so the user can copy immediately with Ctrl+C / Cmd+C
+    setTimeout(() => { input.focus(); input.select(); }, 50);
+  }
+
+  function closeShareModal() {
+    document.getElementById('share-modal').style.display = 'none';
   }
 
   function writeToClipboard(text) {
@@ -1949,6 +1963,24 @@
 
     // Share route button
     document.getElementById('btn-share-route').addEventListener('click', shareRoute);
+
+    // Share modal
+    document.getElementById('share-modal-close').addEventListener('click', closeShareModal);
+    document.getElementById('share-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeShareModal();
+    });
+    document.getElementById('share-url-input').addEventListener('click', e => e.target.select());
+    document.getElementById('share-copy-btn').addEventListener('click', () => {
+      const url    = document.getElementById('share-url-input').value;
+      const btn    = document.getElementById('share-copy-btn');
+      writeToClipboard(url)
+        .then(() => {
+          btn.textContent = 'Copied!';
+          btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+        })
+        .catch(() => showShareToast('Could not copy — select the link and copy manually.'));
+    });
 
     // Shared-route expiration banner
     document.getElementById('banner-save-btn').addEventListener('click', async () => {
