@@ -835,7 +835,7 @@
   }
 
   function getFolderIcon(folder) {
-    const f = folder.toLowerCase();
+    const f = (folder || '').toLowerCase();
     if (f.includes('upload'))                              return '📤';
     if (f.includes('hik') || f.includes('trail') || f.includes('walk')) return '🥾';
     if (f.includes('cycl') || f.includes('bike'))         return '🚴';
