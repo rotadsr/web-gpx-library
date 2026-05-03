@@ -13,11 +13,20 @@ const MapManager = (() => {
   let startMarker     = null;
   let endMarker       = null;
   let hoverMarker     = null;
-  let locationMarker  = null;
-  let locationCircle  = null;
-  let queryMode       = false;
-  let queryPopup      = null;
-  let lastQueryMs     = 0;
+  let locationMarker    = null;
+  let locationCircle    = null;
+  let queryMode         = false;
+  let queryPopup        = null;
+  let lastQueryMs       = 0;
+  let overviewLayers     = [];
+  let selectedOverviewId = null;
+  let heatLayer              = null;
+  let overviewHeatPts        = [];
+  let overviewSampledByRoute = [];   // [{ id, pts: [[lat,lng], ...] }]
+  let countMarkers           = [];
+  let zoomEndHandler         = null;
+  let heatClickHandler       = null;
+  const HEAT_THRESHOLD       = 9;   // zoom ≤ this → show heatmap instead of polylines
 
   // ── Tile layer catalogue ────────────────────────────────────────────────────
   // All sources: free, open, no API key required.
@@ -296,6 +305,221 @@ const MapManager = (() => {
     if (map) map.invalidateSize();
   }
 
+  // ── Overview mode (all filtered routes) ────────────────────────────────────
+
+  function overviewStyle(state, color) {
+    const c = color || '#64748b';
+    switch (state) {
+      case 'hover':    return { color: c, weight: 5, opacity: 1.0  };
+      case 'selected': return { color: c, weight: 5, opacity: 1.0  };
+      case 'dimmed':   return { color: c, weight: 2, opacity: 0.22 };
+      default:         return { color: c, weight: 3, opacity: 0.72 };
+    }
+  }
+
+  function buildOverviewSamples(items) {
+    const heatPts = [];
+    const byRoute = [];
+    for (const item of items) {
+      const ll = item.latlngs;
+      if (!ll || ll.length < 2) continue;
+      const step = Math.max(1, Math.floor(ll.length / Math.min(60, ll.length)));
+      const pts  = [];
+      for (let i = 0; i < ll.length; i += step) {
+        pts.push(ll[i]);
+        heatPts.push([ll[i][0], ll[i][1], 1]);
+      }
+      byRoute.push({ id: item.id, pts });
+    }
+    return { heatPts, byRoute };
+  }
+
+  function buildCountMarkers() {
+    countMarkers.forEach(m => m.remove());
+    countMarkers = [];
+    if (!map || !overviewSampledByRoute.length) return;
+
+    // Cell size in degrees, doubling for each zoom step below threshold
+    const zoom     = map.getZoom();
+    const cellSize = Math.pow(2, HEAT_THRESHOLD - zoom) * 0.5;
+    const cells    = new Map(); // "lat:lng" → { routes: Set, lat, lng }
+
+    overviewSampledByRoute.forEach(({ id, pts }) => {
+      pts.forEach(([lat, lng]) => {
+        const cLat = Math.floor(lat / cellSize) * cellSize;
+        const cLng = Math.floor(lng / cellSize) * cellSize;
+        const key  = `${cLat}:${cLng}`;
+        if (!cells.has(key)) cells.set(key, { routes: new Set(), sumLat: 0, sumLng: 0, n: 0 });
+        const cell = cells.get(key);
+        cell.routes.add(id);
+        cell.sumLat += lat;
+        cell.sumLng += lng;
+        cell.n++;
+      });
+    });
+
+    cells.forEach(({ routes, sumLat, sumLng, n }) => {
+      const marker = L.marker(
+        [sumLat / n, sumLng / n],
+        {
+          icon: L.divIcon({
+            className: 'heat-count-marker',
+            html: `<span class="hcm-bubble">${routes.size}</span>`,
+            iconSize:   [0, 0],
+            iconAnchor: [0, 0],
+          }),
+          interactive: false,
+          zIndexOffset: 200,
+        }
+      ).addTo(map);
+      countMarkers.push(marker);
+    });
+  }
+
+  function updateOverviewDisplay() {
+    if (!map || !overviewLayers.length) return;
+    const inHeatMode = map.getZoom() <= HEAT_THRESHOLD && overviewHeatPts.length > 0;
+    const badge      = document.getElementById('heatmap-badge');
+
+    if (inHeatMode) {
+      overviewLayers.forEach(({ polyline }) => {
+        polyline.setStyle({ opacity: 0, weight: 0 });
+        if (polyline._path) polyline._path.style.pointerEvents = 'none';
+      });
+      if (!heatLayer && typeof L.heatLayer === 'function') {
+        heatLayer = L.heatLayer(overviewHeatPts, {
+          radius:   22,
+          blur:     28,
+          maxZoom:  HEAT_THRESHOLD + 1,
+          gradient: { 0.2: '#3b82f6', 0.5: '#22c55e', 0.75: '#f59e0b', 1.0: '#ef4444' },
+        });
+      }
+      if (heatLayer && !map.hasLayer(heatLayer)) heatLayer.addTo(map);
+      buildCountMarkers();
+      if (badge) {
+        const n = overviewLayers.length;
+        badge.innerHTML =
+          `${n} route${n !== 1 ? 's' : ''}` +
+          `<span class="hb-hint">click to zoom in</span>`;
+        badge.style.display = 'block';
+      }
+      map.getContainer().style.cursor = 'zoom-in';
+    } else {
+      if (heatLayer && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+      countMarkers.forEach(m => m.remove());
+      countMarkers = [];
+      overviewLayers.forEach(({ polyline, color, state }) => {
+        polyline.setStyle(overviewStyle(state || 'idle', color));
+        if (polyline._path) polyline._path.style.pointerEvents = '';
+      });
+      if (badge) badge.style.display = 'none';
+      map.getContainer().style.cursor = '';
+    }
+  }
+
+  function showOverview(items, callbacks) {
+    ensureMap();
+    clearRoute();
+    clearOverview();
+    if (!items.length) return;
+
+    const samples = buildOverviewSamples(items);
+    overviewHeatPts        = samples.heatPts;
+    overviewSampledByRoute = samples.byRoute;
+    const allLatLngs = [];
+
+    items.forEach(item => {
+      if (!item.latlngs || item.latlngs.length < 2) return;
+
+      const poly = L.polyline(item.latlngs, overviewStyle('idle', item.color)).addTo(map);
+
+      poly.on('mouseover', () => {
+        if (map.getZoom() <= HEAT_THRESHOLD) return;
+        if (item.id !== selectedOverviewId) poly.setStyle(overviewStyle('hover', item.color));
+        if (callbacks.onHover) callbacks.onHover(item);
+      });
+      poly.on('mousemove', e => {
+        if (map.getZoom() <= HEAT_THRESHOLD) return;
+        if (callbacks.onMove) callbacks.onMove(e.originalEvent);
+      });
+      poly.on('mouseout', () => {
+        if (map.getZoom() <= HEAT_THRESHOLD) return;
+        if (item.id !== selectedOverviewId) poly.setStyle(overviewStyle('idle', item.color));
+        if (callbacks.onLeave) callbacks.onLeave();
+      });
+      poly.on('click', () => {
+        if (map.getZoom() <= HEAT_THRESHOLD) return;
+        selectOverviewRoute(item.id);
+        if (callbacks.onClick) callbacks.onClick(item.id);
+      });
+
+      overviewLayers.push({ id: item.id, polyline: poly, color: item.color, state: 'idle' });
+      allLatLngs.push(...item.latlngs);
+    });
+
+    // Click in heatmap mode → zoom in to fit routes in that area
+    heatClickHandler = e => {
+      if (map.getZoom() > HEAT_THRESHOLD) return;
+      const clickPt   = e.latlng;
+      const nearBounds = L.latLngBounds();
+      overviewLayers.forEach(({ polyline }) => {
+        try {
+          if (polyline.getBounds().pad(0.1).contains(clickPt)) {
+            nearBounds.extend(polyline.getBounds());
+          }
+        } catch (_) {}
+      });
+      if (nearBounds.isValid()) {
+        map.fitBounds(nearBounds, { padding: [48, 48], maxZoom: HEAT_THRESHOLD + 3 });
+      } else {
+        map.flyTo(clickPt, Math.min(map.getZoom() + 3, HEAT_THRESHOLD + 2), { duration: 0.6 });
+      }
+    };
+    map.on('click', heatClickHandler);
+
+    zoomEndHandler = updateOverviewDisplay;
+    map.on('zoomend', zoomEndHandler);
+
+    if (allLatLngs.length) {
+      try { map.fitBounds(L.latLngBounds(allLatLngs), { padding: [32, 32] }); } catch (_) {}
+    }
+
+    updateOverviewDisplay();
+  }
+
+  function clearOverview() {
+    if (heatClickHandler) { map.off('click', heatClickHandler); heatClickHandler = null; }
+    if (zoomEndHandler)   { map.off('zoomend', zoomEndHandler); zoomEndHandler = null; }
+    if (heatLayer) {
+      if (map && map.hasLayer(heatLayer)) map.removeLayer(heatLayer);
+      heatLayer = null;
+    }
+    if (map) map.getContainer().style.cursor = '';
+    countMarkers.forEach(m => m.remove());
+    countMarkers = [];
+    overviewSampledByRoute = [];
+    const badge = document.getElementById('heatmap-badge');
+    if (badge) badge.style.display = 'none';
+    overviewHeatPts = [];
+    overviewLayers.forEach(({ polyline }) => polyline.remove());
+    overviewLayers = [];
+    selectedOverviewId = null;
+  }
+
+  function selectOverviewRoute(id) {
+    selectedOverviewId = id;
+    const inHeat = map && map.getZoom() <= HEAT_THRESHOLD;
+    overviewLayers.forEach(layer => {
+      if (layer.id === id) {
+        layer.state = 'selected';
+        if (!inHeat) { layer.polyline.setStyle(overviewStyle('selected', layer.color)); layer.polyline.bringToFront(); }
+      } else {
+        layer.state = 'dimmed';
+        if (!inHeat) layer.polyline.setStyle(overviewStyle('dimmed', layer.color));
+      }
+    });
+  }
+
   function getViewState() {
     if (!map) return { lat: 46, lng: 8, zoom: 10 };
     const c = map.getCenter();
@@ -311,5 +535,6 @@ const MapManager = (() => {
     invalidateMapSize,
     highlightPoint, hideHighlight,
     getViewState,
+    showOverview, clearOverview, selectOverviewRoute,
   };
 })();
