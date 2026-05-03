@@ -142,8 +142,8 @@
 
         <!-- Shown when a route is loaded from a shared link -->
         <div id="shared-route-banner" style="display:none">
-          <span class="banner-icon">⏳</span>
-          <span class="banner-text">This shared link will expire. Save the route to keep it forever.</span>
+          <span class="banner-icon">🔗</span>
+          <span class="banner-text">This route was shared via a link. Save it to your library to keep it permanently.</span>
           <button id="banner-save-btn" class="banner-save-btn">Save to Library</button>
           <button id="banner-dismiss-btn" class="banner-dismiss-btn" title="Dismiss">✕</button>
         </div>
@@ -249,6 +249,27 @@
   </main>
 </div>
 
+<!-- ── PAT Setup Modal ──────────────────────────────────────────────────── -->
+<div id="pat-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pat-modal-title">
+  <div class="share-dialog pat-dialog">
+    <div class="share-dialog-header">
+      <h3 id="pat-modal-title">GitHub Token Required</h3>
+      <button id="pat-modal-close" class="share-close-btn" title="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">To share routes you need a GitHub Personal Access Token (PAT) with the <code>gist</code> scope. It is stored only in <em>this browser</em> and is never sent anywhere except GitHub.</p>
+    <p class="share-dialog-hint">Recipients don't need a token — anyone with the link can view the route.</p>
+    <div class="pat-input-row">
+      <input type="password" id="pat-token-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+    </div>
+    <p id="pat-error" class="pat-error"></p>
+    <div class="pat-actions">
+      <a href="https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token on GitHub ↗</a>
+      <button id="pat-save-btn" class="share-copy-btn">Save &amp; Share</button>
+    </div>
+    <p class="pat-privacy-note">Your token is stored in this browser's localStorage and is only used to create Gists on your behalf.</p>
+  </div>
+</div>
+
 <!-- ── Share Modal ──────────────────────────────────────────────────────── -->
 <div id="share-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
   <div class="share-dialog">
@@ -256,11 +277,14 @@
       <h3 id="share-modal-title">Share Route</h3>
       <button id="share-modal-close" class="share-close-btn" title="Close">✕</button>
     </div>
-    <p class="share-dialog-hint">Anyone with this link can view the route. The link will expire — recipients should save the route to their library.</p>
+    <p class="share-dialog-hint">Anyone with this link can view the route. Recipients can save it to their local library.</p>
     <p id="share-simplify-info" class="share-simplify-info" style="display:none"></p>
     <div class="share-link-row">
       <input type="text" id="share-url-input" class="share-url-input" readonly />
       <button id="share-copy-btn" class="share-copy-btn">Copy</button>
+    </div>
+    <div class="share-dialog-footer">
+      <button id="share-change-token-btn" class="share-change-token-btn">Change GitHub token</button>
     </div>
   </div>
 </div>
