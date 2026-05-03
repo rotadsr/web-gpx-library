@@ -151,7 +151,7 @@
     buildCategoryPills();
     renderFileTree();
 
-    checkSharedRouteParam();
+    checkSharedGistParam();
 
     document.getElementById('search-input').addEventListener('input', e => {
       searchQuery = e.target.value.toLowerCase().trim();
@@ -968,41 +968,123 @@
     });
   }
 
-  // ── Share via 0x0.st ─────────────────────────────────────────────────────────
+  // ── Share via GitHub Gist ─────────────────────────────────────────────────────
+
+  const PAT_KEY = 'gpxlib-gist-token';
+  function getPat()    { return localStorage.getItem(PAT_KEY) || null; }
+  function setPat(tok) { localStorage.setItem(PAT_KEY, tok.trim()); }
+  function clearPat()  { localStorage.removeItem(PAT_KEY); }
+
+  async function validatePat(pat) {
+    const resp = await fetch('https://api.github.com/user', {
+      headers: { Authorization: 'token ' + pat, Accept: 'application/vnd.github+json' },
+    });
+    if (resp.status === 401) throw new Error('Invalid token — authentication failed.');
+    if (!resp.ok) throw new Error('GitHub API error (' + resp.status + ')');
+    const scopes = (resp.headers.get('X-OAuth-Scopes') || '').split(',').map(s => s.trim());
+    if (!scopes.includes('gist')) throw new Error('Token missing "gist" scope. Create a token with the gist scope enabled.');
+  }
+
+  async function createGist(gpxText, routeName) {
+    const pat = getPat();
+    if (!pat) throw new Error('no_pat');
+    const resp = await fetch('https://api.github.com/gists', {
+      method: 'POST',
+      headers: {
+        Authorization: 'token ' + pat,
+        Accept: 'application/vnd.github+json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        description: routeName || 'Shared GPX route',
+        public: true,
+        files: { 'route.gpx': { content: gpxText } },
+      }),
+    });
+    if (resp.status === 401) throw new Error('token_rejected');
+    if (!resp.ok) throw new Error('Gist creation failed (' + resp.status + ')');
+    const data = await resp.json();
+    return data.id;
+  }
 
   async function shareRoute() {
     if (!currentGpxText) return;
+    if (!getPat()) { openPatModal(); return; }
+    await doShare();
+  }
 
+  async function doShare() {
     const btn   = document.getElementById('btn-share-route');
     const label = document.getElementById('btn-share-label');
     btn.disabled = true;
     label.textContent = 'Sharing…';
 
     try {
-      const origCount  = (currentGpxText.match(/<trkpt/g) || []).length;
-      const gpxToShare = simplifyGpxForSharing(currentGpxText);
-      const newCount   = (gpxToShare.match(/<trkpt/g) || []).length;
+      const origCount    = (currentGpxText.match(/<trkpt/g) || []).length;
+      const gpxToShare   = simplifyGpxForSharing(currentGpxText);
+      const newCount     = (gpxToShare.match(/<trkpt/g) || []).length;
       const simplifyInfo = origCount !== newCount
         ? `Track simplified from ${origCount.toLocaleString()} to ${newCount.toLocaleString()} points for sharing.`
         : null;
 
-      const formData = new FormData();
-      formData.append('file', new Blob([gpxToShare], { type: 'application/gpx+xml' }), 'route.gpx');
-
-      const resp = await fetch('https://0x0.st/', { method: 'POST', body: formData });
-      if (!resp.ok) throw new Error('Upload failed (' + resp.status + ')');
-
-      const fileUrl  = (await resp.text()).trim();
-      const x0id     = fileUrl.replace('https://0x0.st/', '');
-      const shareUrl = window.location.origin + window.location.pathname + '?x0=' + x0id;
+      const routeName = document.getElementById('route-name').textContent || 'Shared Route';
+      const gistId    = await createGist(gpxToShare, routeName);
+      const shareUrl  = window.location.origin + window.location.pathname + '?gist=' + gistId;
 
       openShareModal(shareUrl, simplifyInfo);
 
     } catch (err) {
-      showShareToast('Could not create share link: ' + err.message);
+      if (err.message === 'token_rejected' || err.message === 'no_pat') {
+        clearPat();
+        showShareToast('Token rejected — please re-enter your PAT.');
+        openPatModal();
+      } else {
+        showShareToast('Could not create share link: ' + err.message);
+      }
     } finally {
       btn.disabled = false;
       label.textContent = 'Share';
+    }
+  }
+
+  function openPatModal() {
+    const modal = document.getElementById('pat-modal');
+    document.getElementById('pat-token-input').value = '';
+    document.getElementById('pat-error').textContent = '';
+    const saveBtn = document.getElementById('pat-save-btn');
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save & Share';
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('pat-token-input').focus(), 50);
+  }
+
+  function closePatModal() {
+    document.getElementById('pat-modal').style.display = 'none';
+    document.getElementById('btn-share-route').disabled = false;
+    document.getElementById('btn-share-label').textContent = 'Share';
+  }
+
+  async function handlePatSave() {
+    const input   = document.getElementById('pat-token-input');
+    const errEl   = document.getElementById('pat-error');
+    const saveBtn = document.getElementById('pat-save-btn');
+    const pat     = input.value.trim();
+
+    if (!pat) { errEl.textContent = 'Please enter a token.'; return; }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Validating…';
+    errEl.textContent = '';
+
+    try {
+      await validatePat(pat);
+      setPat(pat);
+      closePatModal();
+      doShare();
+    } catch (err) {
+      errEl.textContent = err.message;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save & Share';
     }
   }
 
@@ -1068,17 +1150,31 @@
     document.getElementById('shared-route-banner').style.display = 'none';
   }
 
-  async function checkSharedRouteParam() {
-    const x0id = new URLSearchParams(window.location.search).get('x0');
-    if (!x0id) return;
+  async function checkSharedGistParam() {
+    const gistId = new URLSearchParams(window.location.search).get('gist');
+    if (!gistId || !/^[0-9a-f]{20,40}$/i.test(gistId)) return;
 
     try {
-      const resp = await fetch('https://0x0.st/' + x0id);
+      const resp = await fetch('https://api.github.com/gists/' + gistId, {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const gpxText = await resp.text();
+      const data = await resp.json();
 
-      const parsed    = GPXParser.parse(gpxText);
-      const routeName = parsed.metadata?.name || 'Shared Route';
+      const gpxFile = Object.values(data.files).find(f => f.filename.endsWith('.gpx'));
+      if (!gpxFile) throw new Error('No GPX file in gist');
+
+      let gpxText;
+      if (gpxFile.truncated) {
+        const rawResp = await fetch(gpxFile.raw_url);
+        if (!rawResp.ok) throw new Error('Failed to fetch GPX content');
+        gpxText = await rawResp.text();
+      } else {
+        gpxText = gpxFile.content;
+      }
+
+      const parsed      = GPXParser.parse(gpxText);
+      const routeName   = parsed.metadata?.name || data.description || 'Shared Route';
       const sharedRoute = {
         id:      'shared-' + Date.now(),
         name:    routeName,
@@ -1099,7 +1195,7 @@
 
     } catch (err) {
       console.warn('Failed to load shared route:', err);
-      showShareToast('Could not load shared route — the link may have expired.');
+      showShareToast('Could not load shared route — the gist may no longer exist.');
     }
   }
 
@@ -2118,6 +2214,20 @@
           setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
         })
         .catch(() => showShareToast('Could not copy — select the link and copy manually.'));
+    });
+    document.getElementById('share-change-token-btn').addEventListener('click', () => {
+      closeShareModal();
+      openPatModal();
+    });
+
+    // PAT modal
+    document.getElementById('pat-modal-close').addEventListener('click', closePatModal);
+    document.getElementById('pat-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closePatModal();
+    });
+    document.getElementById('pat-save-btn').addEventListener('click', handlePatSave);
+    document.getElementById('pat-token-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handlePatSave();
     });
 
     // Shared-route expiration banner

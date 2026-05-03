@@ -40,11 +40,11 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Activity icons in sidebar for quick identification
 
 ### 🔗 Route Sharing
-- **Share button** in the route header — track is automatically simplified, uploaded to [0x0.st](https://0x0.st), and a short link is shown in a popup
+- **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a link is shown in a popup
 - Copy the link with the **Copy** button or select it manually — no clipboard permission required
-- Recipients open the link and the route loads automatically, no account or file transfer needed
+- Recipients open the link and the route loads automatically — no account or token needed to view
 - Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
-- Links expire over time — recipients are reminded to save the route to their local library if they want to keep it
+- Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
 
 ### ⚙️ User-Friendly Workflow
 1. **Upload** a GPX file (drag & drop or click)
@@ -82,14 +82,15 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 ### Share a Route
 - Load any route from the sidebar
 - Click the **Share** button in the route header
-- The track is simplified and uploaded to 0x0.st; a popup appears with the short link
+- On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — [create one here](https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share). The token is saved in your browser's localStorage and never sent anywhere except GitHub
+- The track is simplified and saved as a public GitHub Gist; a popup appears with the link
 - Click **Copy** or select the link manually, then send it to anyone
-- The recipient opens the link and the route loads automatically in their browser
-- A banner reminds them to save the route to their library before the link expires
+- The recipient opens the link and the route loads automatically — no token required to view
+- A banner prompts recipients to save the route to their local library
 
-> **Note:** Shared links are hosted on [0x0.st](https://0x0.st), a free anonymous file host. Links expire over time (smaller files last longer). Save shared routes to your local library to keep them permanently.
+> **Note:** Shared links are backed by [GitHub Gist](https://gist.github.com/), which stores them permanently (until the Gist owner deletes them). Recipients should still save shared routes to their local library to ensure long-term access.
 
-> **Track simplification:** Before uploading, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
+> **Track simplification:** Before sharing, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
 
 ### Edit a Route
 - Click the **green pencil icon** on any route
@@ -104,7 +105,7 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
 - **Storage**: Browser IndexedDB (client-side, no server)
 - **APIs**:
-  - [0x0.st](https://0x0.st) — anonymous file hosting for route share links (free, no key)
+  - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
   - [Nominatim](https://nominatim.org/) — reverse geocoding (free)
 
