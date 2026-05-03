@@ -249,6 +249,21 @@
   </main>
 </div>
 
+<!-- ── Share Modal ──────────────────────────────────────────────────────── -->
+<div id="share-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
+  <div class="share-dialog">
+    <div class="share-dialog-header">
+      <h3 id="share-modal-title">Share Route</h3>
+      <button id="share-modal-close" class="share-close-btn" title="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">Anyone with this link can view the route. The link will expire — recipients should save the route to their library.</p>
+    <div class="share-link-row">
+      <input type="text" id="share-url-input" class="share-url-input" readonly />
+      <button id="share-copy-btn" class="share-copy-btn">Copy</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── GPX Editor Modal ──────────────────────────────────────────────────── -->
 <div id="editor-modal" class="editor-overlay">
   <div class="editor-layout">
