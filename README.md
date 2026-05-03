@@ -13,6 +13,13 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Real-time elevation cursor on the map
 - **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
 
+### 🗺️ Overview Mode
+- **Show all routes** on the map at once with the "Show all" button
+- At zoom ≤ 9, routes automatically switch to a **density heatmap** — colour intensity shows where routes concentrate
+- **Route count bubbles** per zone show how many routes are in each area
+- Click a heatmap zone to zoom the map to fit that area
+- Click any route in the sidebar to exit overview and fly to that track; click the same route again to return to overview
+
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
 - **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed
@@ -34,10 +41,14 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Backup reminders** — browser warns before leaving if changes aren't exported
 
 ### 🔍 Search & Filter
-- Full-text search across route names and descriptions
-- Semantic keyword expansion (e.g., "winter" finds all snow activities)
-- Filter by activity category (hiking, cycling, water sports, etc.)
-- Activity icons in sidebar for quick identification
+- Full-text search across route names, descriptions, and tags
+- **Location search** — search by city, county, region, or country (e.g. "Alps", "Catalunya", "Norway")
+- **Country flag emoji search** — type a flag like 🇫🇷, 🇪🇸, or 🇯🇵 to filter routes by country
+- **Difficulty search** — type `easy`, `moderate`, `hard`, or `expert` to filter by difficulty level
+- Semantic keyword expansion (e.g. "winter" finds all snow activities)
+- **Activity filter** — category pills (hiking, cycling, water sports, etc.) with icons
+- **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
+- All filters (search, activity, difficulty) stack and work together
 
 ### 🔗 Route Sharing
 - **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a link is shown in a popup
@@ -45,6 +56,11 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Recipients open the link and the route loads automatically — no account or token needed to view
 - Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
 - Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
+
+### 📱 Mobile-Friendly
+- Sidebar slides in as a full-screen drawer via the floating **Routes** button
+- Details panel collapses to a bottom sheet; tap the handle to expand
+- Tap any route to close the sidebar and fly to the track
 
 ### ⚙️ User-Friendly Workflow
 1. **Upload** a GPX file (drag & drop or click)
@@ -70,12 +86,12 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - Routes persist and sync across browser restarts
 
 ### Export Your Library
-- Click **"Export"** in the library header
+- Click **"···"** → **Export** in the library header
 - Downloads `gpx-library-YYYY-MM-DD.json`
 - Keep as backup on your computer
 
 ### Import Previously Exported Library
-- Click **"Import"** in the library header
+- Click **"···"** → **Import…** in the library header
 - Select a `.json` file
 - Choose **Merge** (add to existing) or **Overwrite** (replace all)
 
@@ -97,17 +113,26 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - Full editor opens with map, track editor, and metadata forms
 - Download as GPX when done, or save directly to library
 
+### Search & Filter
+- Type in the search bar to filter by name, description, activity, location, or difficulty
+- Use a country flag emoji (🇫🇷, 🇪🇸…) to filter all routes in that country
+- Type `easy`, `moderate`, `hard`, or `expert` to filter by difficulty
+- Click activity pills under **Activity** to filter by sport category
+- Click difficulty pills under **Difficulty** to filter by difficulty level
+- All filters combine — e.g. "hard" + Cycling shows only hard cycling routes
+
 ## Tech Stack
 
 - **Frontend**: Vanilla JavaScript (no frameworks)
 - **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers
+- **Heatmap**: [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat) for overview density view
 - **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
 - **Storage**: Browser IndexedDB (client-side, no server)
 - **APIs**:
   - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
-  - [Nominatim](https://nominatim.org/) — reverse geocoding (free)
+  - [Nominatim](https://nominatim.org/) — reverse geocoding for location search (free)
 
 ## File Structure
 
@@ -152,6 +177,7 @@ Then open `http://localhost:8000` in your browser.
 
 - **All data stays in your browser.** No server, no tracking, no cloud sync.
 - IndexedDB is local to your device and browser.
+- Route difficulty and geocoded locations are cached in localStorage for fast filtering.
 - Export your library regularly for backup.
 - Clearing browser site data will delete your library (export first!).
 
@@ -175,6 +201,12 @@ Routes are scored based on:
 
 Levels: 🟢 Easy, 🟡 Moderate, 🔴 Hard, ⚫ Expert
 
+### Sorting Options
+- **A → Z / Z → A** — alphabetical by name
+- **Newest / Oldest** — by upload date
+- **By activity** — grouped by sport category
+- **🟢 Easy first / ⚫ Hard first** — by difficulty rating
+
 ### Activity Types (25+)
 **Hiking & Walking**: Hike, Trail Walking, Ultralight Hiking, Fell Running  
 **Mountain Sports**: Mountaineering, Rock Climbing, Via Ferrata, Alpine Skiing, Ski Mountaineering  
@@ -190,6 +222,9 @@ Levels: 🟢 Easy, 🟡 Moderate, 🔴 Hard, ⚫ Expert
 
 ### Unit Toggle
 Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fly.
+
+### Location Search & Geocoding
+When a route is first opened (or when overview mode loads all routes), its centre point is reverse-geocoded via Nominatim. The result — city, county, region, country — is cached in localStorage so future searches are instant. Searching by location, country name, or flag emoji all use this cached data.
 
 ## Keyboard Shortcuts
 
