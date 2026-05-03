@@ -14,6 +14,7 @@
   let currentPoints   = [];
   let activeRouteId   = null;
   let currentGpxText  = null;
+  let sharedRouteRef  = null;  // route object loaded from a ?x0= share URL
 
   // Activity / category filter
   let activeCategory = null;   // null = all, or a CATEGORIES key like 'cycling'
@@ -150,7 +151,7 @@
     buildCategoryPills();
     renderFileTree();
 
-    checkSharedRouteUrl();
+    checkSharedRouteParam();
 
     document.getElementById('search-input').addEventListener('input', e => {
       searchQuery = e.target.value.toLowerCase().trim();
@@ -843,36 +844,53 @@
     return '📁';
   }
 
-  // ── Share via URL ─────────────────────────────────────────────────────────────
+  // ── Share via 0x0.st ─────────────────────────────────────────────────────────
 
-  function shareRoute() {
+  async function shareRoute() {
     if (!currentGpxText) return;
-    const compressed = LZString.compressToEncodedURIComponent(currentGpxText);
-    const shareUrl = window.location.origin + window.location.pathname + '#data=' + compressed;
 
-    const btn = document.getElementById('btn-share-route');
+    const btn   = document.getElementById('btn-share-route');
+    const label = document.getElementById('btn-share-label');
+    btn.disabled = true;
+    label.textContent = 'Sharing…';
 
-    const writeToClipboard = (text) => {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        return navigator.clipboard.writeText(text);
-      }
-      const ta = document.createElement('textarea');
-      ta.value = text;
-      ta.style.cssText = 'position:fixed;opacity:0';
-      document.body.appendChild(ta);
-      ta.focus(); ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      return Promise.resolve();
-    };
+    try {
+      const formData = new FormData();
+      formData.append('file', new Blob([currentGpxText], { type: 'application/gpx+xml' }), 'route.gpx');
 
-    writeToClipboard(shareUrl)
-      .then(() => {
-        btn.classList.add('copied');
-        setTimeout(() => btn.classList.remove('copied'), 1800);
-        showShareToast('Share link copied to clipboard!');
-      })
-      .catch(() => showShareToast('Could not copy — please copy the URL manually.'));
+      const resp = await fetch('https://0x0.st/', { method: 'POST', body: formData });
+      if (!resp.ok) throw new Error('Upload failed (' + resp.status + ')');
+
+      const fileUrl = (await resp.text()).trim();              // e.g. https://0x0.st/Abc.gpx
+      const x0id   = fileUrl.replace('https://0x0.st/', ''); // e.g. Abc.gpx
+      const shareUrl = window.location.origin + window.location.pathname + '?x0=' + x0id;
+
+      await writeToClipboard(shareUrl);
+      btn.classList.add('copied');
+      label.textContent = 'Copied!';
+      setTimeout(() => { btn.classList.remove('copied'); label.textContent = 'Share'; }, 2000);
+      showShareToast('Share link copied to clipboard!');
+
+    } catch (err) {
+      label.textContent = 'Share';
+      showShareToast('Could not create share link: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function writeToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    return Promise.resolve();
   }
 
   function showShareToast(msg) {
@@ -885,40 +903,59 @@
     toast.textContent = msg;
     toast.classList.add('show');
     clearTimeout(toast._hideTimer);
-    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+    toast._hideTimer = setTimeout(() => toast.classList.remove('show'), 2800);
   }
 
-  async function checkSharedRouteUrl() {
-    const hash = window.location.hash;
-    if (!hash.startsWith('#data=')) return;
-    const encoded = hash.slice(6);
+  function showSharedRouteBanner(route) {
+    sharedRouteRef = route;
+    document.getElementById('shared-route-banner').style.display = 'flex';
+  }
+
+  function hideSharedRouteBanner() {
+    sharedRouteRef = null;
+    document.getElementById('shared-route-banner').style.display = 'none';
+  }
+
+  async function checkSharedRouteParam() {
+    const x0id = new URLSearchParams(window.location.search).get('x0');
+    if (!x0id) return;
+
     try {
-      const gpxText = LZString.decompressFromEncodedURIComponent(encoded);
-      if (!gpxText) return;
-      const parsed = GPXParser.parse(gpxText);
+      const resp = await fetch('https://0x0.st/' + x0id);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const gpxText = await resp.text();
+
+      const parsed    = GPXParser.parse(gpxText);
       const routeName = parsed.metadata?.name || 'Shared Route';
       const sharedRoute = {
-        id: 'shared-' + Date.now(),
-        name: routeName,
+        id:      'shared-' + Date.now(),
+        name:    routeName,
         gpxText,
-        source: 'upload',
-        tags: [],
-        folder: null,
+        source:  'upload',
+        tags:    [],
+        folder:  null,
       };
+
       uploadedRoutes.push(sharedRoute);
       buildCategoryPills();
       renderFileTree();
+
       const li = document.querySelector(`.route-item[data-id="${sharedRoute.id}"]`);
       if (li) await loadRoute(sharedRoute, li);
+
+      showSharedRouteBanner(sharedRoute);
+
     } catch (err) {
-      console.warn('Failed to load shared route from URL:', err);
+      console.warn('Failed to load shared route:', err);
+      showShareToast('Could not load shared route — the link may have expired.');
     }
   }
 
   // ── Route loading ─────────────────────────────────────────────────────────────
 
   async function loadRoute(route, listItem) {
-    View3D.hide(); // exit 3D view when switching routes
+    View3D.hide();
+    hideSharedRouteBanner();
     document.querySelectorAll('.route-item').forEach(el => el.classList.remove('active'));
     listItem.classList.add('active');
     activeRouteId = route.id;
@@ -1912,6 +1949,15 @@
 
     // Share route button
     document.getElementById('btn-share-route').addEventListener('click', shareRoute);
+
+    // Shared-route expiration banner
+    document.getElementById('banner-save-btn').addEventListener('click', async () => {
+      if (sharedRouteRef) {
+        await saveUploadToLibrary(sharedRouteRef);
+        hideSharedRouteBanner();
+      }
+    });
+    document.getElementById('banner-dismiss-btn').addEventListener('click', hideSharedRouteBanner);
 
     // Map toolbar
     document.getElementById('btn-zoom-in') .addEventListener('click', () => MapManager.zoomIn());
