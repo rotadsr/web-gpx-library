@@ -1108,52 +1108,7 @@
     expert:   '#64748b',
   };
 
-  // ── Ski resort database (Alps + Iberian Peninsula) ───────────────────────────
-  // bbox: [south, west, north, east]
-  const SKI_RESORTS = [
-    // Andorra
-    { id: 'grandvalira',        name: 'Grandvalira',              country: 'Andorra',      flag: '🇦🇩', bbox: [42.49, 1.58, 42.62, 1.92] },
-    { id: 'ordino-arcalis',     name: 'Ordino Arcalís',           country: 'Andorra',      flag: '🇦🇩', bbox: [42.54, 1.49, 42.63, 1.59] },
-    { id: 'pal-arinsal',        name: 'Pal-Arinsal',              country: 'Andorra',      flag: '🇦🇩', bbox: [42.52, 1.43, 42.60, 1.52] },
-    // Spain
-    { id: 'baqueira-beret',     name: 'Baqueira Beret',           country: 'Spain',        flag: '🇪🇸', bbox: [42.65, 0.85, 42.78, 1.07] },
-    { id: 'formigal',           name: 'Formigal',                 country: 'Spain',        flag: '🇪🇸', bbox: [42.72, -0.49, 42.83, -0.33] },
-    { id: 'cerler',             name: 'Cerler',                   country: 'Spain',        flag: '🇪🇸', bbox: [42.53, 0.38, 42.63, 0.53] },
-    { id: 'la-molina',          name: 'La Molina / Masella',      country: 'Spain',        flag: '🇪🇸', bbox: [42.29, 1.85, 42.41, 2.02] },
-    { id: 'sierra-nevada',      name: 'Sierra Nevada',            country: 'Spain',        flag: '🇪🇸', bbox: [37.04, -3.49, 37.14, -3.32] },
-    // France
-    { id: 'chamonix',           name: 'Chamonix',                 country: 'France',       flag: '🇫🇷', bbox: [45.84, 6.74, 45.99, 7.06] },
-    { id: 'les-3-vallees',      name: 'Les 3 Vallées',            country: 'France',       flag: '🇫🇷', bbox: [45.26, 6.49, 45.53, 6.91] },
-    { id: 'tignes-val-isere',   name: "Tignes / Val d'Isère",     country: 'France',       flag: '🇫🇷', bbox: [45.41, 6.94, 45.57, 7.15] },
-    { id: 'paradiski',          name: 'Paradiski',                country: 'France',       flag: '🇫🇷', bbox: [45.46, 6.61, 45.66, 6.93] },
-    { id: 'alpe-dhuez',         name: "Alpe d'Huez",              country: 'France',       flag: '🇫🇷', bbox: [45.02, 5.97, 45.14, 6.19] },
-    { id: 'portes-du-soleil',   name: 'Portes du Soleil',         country: 'France',       flag: '🇫🇷', bbox: [46.11, 6.57, 46.30, 6.89] },
-    { id: 'serre-chevalier',    name: 'Serre Chevalier',          country: 'France',       flag: '🇫🇷', bbox: [44.88, 6.46, 45.01, 6.72] },
-    // Switzerland
-    { id: 'verbier',            name: 'Verbier / 4 Vallées',      country: 'Switzerland',  flag: '🇨🇭', bbox: [45.96, 7.10, 46.15, 7.39] },
-    { id: 'zermatt',            name: 'Zermatt',                  country: 'Switzerland',  flag: '🇨🇭', bbox: [45.93, 7.65, 46.07, 7.85] },
-    { id: 'jungfrau',           name: 'Jungfrau Region',          country: 'Switzerland',  flag: '🇨🇭', bbox: [46.55, 7.85, 46.72, 8.12] },
-    { id: 'davos-klosters',     name: 'Davos Klosters',           country: 'Switzerland',  flag: '🇨🇭', bbox: [46.71, 9.73, 46.90, 9.97] },
-    { id: 'st-moritz',          name: 'St. Moritz / Engadin',     country: 'Switzerland',  flag: '🇨🇭', bbox: [46.43, 9.74, 46.58, 9.97] },
-    { id: 'saas-fee',           name: 'Saas-Fee',                 country: 'Switzerland',  flag: '🇨🇭', bbox: [46.05, 7.85, 46.17, 7.99] },
-    { id: 'laax',               name: 'Laax-Flims',               country: 'Switzerland',  flag: '🇨🇭', bbox: [46.77, 9.09, 46.92, 9.29] },
-    // Italy
-    { id: 'cervinia',           name: 'Cervinia / Breuil',        country: 'Italy',        flag: '🇮🇹', bbox: [45.86, 7.55, 45.99, 7.73] },
-    { id: 'courmayeur',         name: 'Courmayeur',               country: 'Italy',        flag: '🇮🇹', bbox: [45.75, 6.88, 45.87, 7.05] },
-    { id: 'livigno',            name: 'Livigno',                  country: 'Italy',        flag: '🇮🇹', bbox: [46.48, 10.05, 46.61, 10.24] },
-    { id: 'alta-badia',         name: 'Alta Badia',               country: 'Italy',        flag: '🇮🇹', bbox: [46.50, 11.79, 46.67, 12.02] },
-    { id: 'cortina',            name: "Cortina d'Ampezzo",        country: 'Italy',        flag: '🇮🇹', bbox: [46.47, 12.04, 46.61, 12.25] },
-    { id: 'sestriere',          name: 'Sestriere / Via Lattea',   country: 'Italy',        flag: '🇮🇹', bbox: [44.90, 6.74, 45.04, 6.99] },
-    // Austria
-    { id: 'arlberg',            name: 'Arlberg (St. Anton/Lech)', country: 'Austria',      flag: '🇦🇹', bbox: [47.06, 10.07, 47.25, 10.39] },
-    { id: 'ischgl',             name: 'Ischgl / Samnaun',         country: 'Austria',      flag: '🇦🇹', bbox: [46.94, 10.19, 47.07, 10.43] },
-    { id: 'solden',             name: 'Sölden',                   country: 'Austria',      flag: '🇦🇹', bbox: [46.90, 10.83, 47.05, 11.02] },
-    { id: 'kitzbuhel',          name: 'Kitzbühel',                country: 'Austria',      flag: '🇦🇹', bbox: [47.37, 12.29, 47.54, 12.53] },
-    { id: 'saalbach',           name: 'Saalbach-Hinterglemm',     country: 'Austria',      flag: '🇦🇹', bbox: [47.32, 12.53, 47.47, 12.80] },
-    { id: 'schladming',         name: 'Schladming',               country: 'Austria',      flag: '🇦🇹', bbox: [47.32, 13.56, 47.49, 13.84] },
-    // Germany
-    { id: 'garmisch',           name: 'Garmisch-Partenkirchen',   country: 'Germany',      flag: '🇩🇪', bbox: [47.38, 10.93, 47.55, 11.22] },
-  ];
+  let skiOverlayActive = false;
 
   async function enterOverview() {
     const filteredSaved   = sortRoutes(filterRoutes(savedRoutes));
@@ -2868,16 +2823,46 @@
       if (currentPoints.length >= 2) View3D.show(currentPoints);
     });
 
-    // Auto-load ski resort piste overlays (sequential; cached resorts are instant)
-    (async () => {
-      for (const resort of SKI_RESORTS) {
-        const cached = !!localStorage.getItem('ski-piste-' + resort.id);
-        try {
-          await MapManager.showSkiResort(resort);
-        } catch (_) {}
-        if (!cached) await new Promise(r => setTimeout(r, 400));
+    // Ski piste overlay — load on demand for current viewport
+    document.getElementById('btn-ski').addEventListener('click', async e => {
+      const btn = e.currentTarget;
+      if (skiOverlayActive) {
+        skiOverlayActive = false;
+        MapManager.clearSkiResort();
+        btn.classList.remove('active');
+        btn.title       = 'Show ski resort pistes for this area';
+        btn.textContent = '❄️';
+        return;
       }
-    })();
+      skiOverlayActive  = true;
+      btn.classList.add('active');
+      btn.textContent   = '⏳';
+      btn.title         = 'Loading piste data…';
+      try {
+        const count = await MapManager.showSkiForViewport();
+        btn.textContent = '❄️';
+        btn.title       = 'Hide ski resort pistes';
+        if (!count) showShareToast('No ski piste data found in this area. Try zooming to a resort.');
+      } catch (err) {
+        skiOverlayActive  = false;
+        btn.classList.remove('active');
+        btn.textContent   = '❄️';
+        btn.title         = 'Show ski resort pistes for this area';
+        if (err.message === 'zoom-too-low') {
+          showShareToast('Zoom in to a ski resort area first.');
+        } else {
+          showShareToast('Could not load ski piste data.');
+        }
+      }
+    });
+
+    // ESC hides the piste legend
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        const legend = document.getElementById('piste-legend');
+        if (legend && legend.style.display !== 'none') legend.style.display = 'none';
+      }
+    });
 
     document.addEventListener('click', e => {
       if (!e.target.closest('#map-toolbar') && !e.target.closest('.map-panel')) {
