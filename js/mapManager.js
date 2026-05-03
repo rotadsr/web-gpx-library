@@ -538,9 +538,27 @@ const MapManager = (() => {
   };
 
   let skiLayers = [];
+  let skiZoomListening = false;
+
+  // Weight scales with zoom so pistes appear a consistent real-world width.
+  // Calibrated so a ~30 m wide piste occupies roughly its true width on screen.
+  function _pisteWeight(zoom, isLift) {
+    return Math.max(1, Math.round((isLift ? 1 : 2) * Math.pow(2, zoom - 13)));
+  }
+
+  function _updatePisteWeights() {
+    const z = map.getZoom();
+    skiLayers.forEach(l => l.setStyle({ weight: _pisteWeight(z, l._skiIsLift) }));
+  }
 
   async function showSkiResort({ id, bbox }) {
     ensureMap();
+
+    // Register zoom listener once
+    if (!skiZoomListening) {
+      map.on('zoomend', _updatePisteWeights);
+      skiZoomListening = true;
+    }
 
     // 24-hour localStorage cache per resort
     const CACHE_TTL = 86400000;
@@ -571,32 +589,31 @@ const MapManager = (() => {
       } catch (_) {}
     }
 
+    const zoom = map.getZoom();
     let added = 0;
     elements.forEach(el => {
       if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) return;
-      const coords = el.geometry.map(g => [g.lat, g.lon]);
-      const tags   = el.tags || {};
+      const coords  = el.geometry.map(g => [g.lat, g.lon]);
+      const tags    = el.tags || {};
+      const isLift  = !!tags.aerialway;
 
-      let color, weight, dashArray = null, opacity = 0.9;
+      const color     = isLift ? '#94a3b8' : (PISTE_COLORS[tags['piste:difficulty']] || PISTE_COLORS.easy);
+      const dashArray = isLift ? '12 8' : null;
+      const weight    = _pisteWeight(zoom, isLift);
 
-      if (tags.aerialway) {
-        color     = '#94a3b8';
-        weight    = 1.5;
-        dashArray = '5 5';
-        opacity   = 0.65;
-      } else {
-        const diff = tags['piste:difficulty'] || 'easy';
-        color  = PISTE_COLORS[diff] || PISTE_COLORS.easy;
-        weight = 3.5;
-      }
-
-      const line = L.polyline(coords, { color, weight, opacity, dashArray }).addTo(map);
+      const line = L.polyline(coords, { color, weight, opacity: 0.3, dashArray }).addTo(map);
+      line._skiIsLift = isLift;
 
       const label = [
         tags.name || tags['piste:name'] || '',
         tags['piste:difficulty'] ? `(${tags['piste:difficulty']})` : (tags.aerialway || ''),
       ].filter(Boolean).join(' ');
       if (label) line.bindTooltip(label, { sticky: true, className: 'piste-tooltip' });
+
+      line.on('click', () => {
+        const legend = document.getElementById('piste-legend');
+        if (legend) legend.style.display = '';
+      });
 
       skiLayers.push(line);
       added++;
