@@ -37,7 +37,7 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, -apple-syst
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-right: 1px solid rgba(255,255,255,0.06);
+  border-right: none;
   transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
               min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -71,7 +71,34 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, -apple-syst
   gap: 10px;
   overflow: hidden;
   min-width: 0;
+  flex: 1;
 }
+.sidebar-title-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+.sidebar-tagline {
+  font-size: 9px;
+  color: #475569;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+.sidebar-info-btn {
+  flex-shrink: 0;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  padding: 4px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.sidebar-info-btn:hover { color: #94a3b8; background: rgba(255,255,255,0.07); }
+#sidebar.collapsed .sidebar-info-btn,
+#sidebar.collapsed .sidebar-tagline { display: none; }
 
 #sidebar-header h1 {
   font-size: 17px;
@@ -181,6 +208,40 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, -apple-syst
 .category-pill:hover { background: rgba(59,130,246,0.2); border-color: var(--primary); color: #bfdbfe; }
 .category-pill.active { background: var(--primary); border-color: var(--primary); color: #fff; }
 .category-pill-emoji { font-size: 12px; line-height: 1; }
+
+#difficulty-filter-section {
+  padding: 8px 14px 6px;
+  flex-shrink: 0;
+}
+#difficulty-filter-section h3 {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #475569;
+  margin-bottom: 7px;
+}
+#difficulty-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.difficulty-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 20px;
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.difficulty-pill:hover { background: rgba(59,130,246,0.2); border-color: var(--primary); color: #bfdbfe; }
+.difficulty-pill.active[data-difficulty="easy"]     { background: #22c55e; border-color: #22c55e; color: #fff; }
+.difficulty-pill.active[data-difficulty="moderate"] { background: #eab308; border-color: #eab308; color: #fff; }
+.difficulty-pill.active[data-difficulty="hard"]     { background: #ef4444; border-color: #ef4444; color: #fff; }
+.difficulty-pill.active[data-difficulty="expert"]   { background: #64748b; border-color: #64748b; color: #fff; }
 
 
 /* File Tree */
@@ -459,6 +520,28 @@ body.is-resizing {
   cursor: row-resize !important;
   user-select: none !important;
 }
+body.is-col-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* ── Sidebar drag-to-resize handle ──────────────────────────────────────────── */
+#sidebar-resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+#sidebar-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 2px; width: 1px;
+  background: rgba(255,255,255,0.06);
+  transition: background 0.15s;
+}
+#sidebar-resize-handle:hover::after,
+body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary); }
 
 #map {
   width: 100%;
@@ -1501,7 +1584,38 @@ body.is-resizing {
   cursor: pointer;
   transition: all 0.12s;
 }
-.lib-action-btn:hover { background: rgba(255,255,255,0.14); color: #94a3b8; border-color: rgba(255,255,255,0.2); }
+.lib-action-btn:hover    { background: rgba(255,255,255,0.14); color: #94a3b8; border-color: rgba(255,255,255,0.2); }
+.lib-action-btn.is-active { color: var(--primary); border-color: rgba(59,130,246,0.45); background: rgba(59,130,246,0.1); }
+
+.lib-menu-btn { font-size: 14px; letter-spacing: 1px; padding: 3px 7px; }
+
+/* Library dropdowns (sort + actions) */
+.lib-dropdown {
+  position: fixed;
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  padding: 4px 0;
+  z-index: 2000;
+  min-width: 155px;
+}
+
+.lib-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+.lib-dropdown-item:hover { background: rgba(255,255,255,0.08); color: #e2e8f0; }
+.lib-dropdown-item.is-active { color: var(--primary); }
+.lib-dropdown-check { width: 12px; font-size: 10px; flex-shrink: 0; color: var(--primary); }
+.lib-dropdown-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0; }
 
 /* ── Yellow save button — uploaded route items ───────────────────────────────── */
 .btn-route-save {
@@ -1774,3 +1888,282 @@ body.is-resizing {
   color: #fff;
 }
 #btn-3d.active:hover { background: var(--primary-dark); }
+
+/* ── Overview mode tooltip ──────────────────────────────────────────────────── */
+
+#overview-tooltip {
+  position: absolute;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.93);
+  color: #f1f5f9;
+  padding: 7px 11px 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+  max-width: 240px;
+}
+
+.ovt-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #f8fafc;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ovt-stats {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+/* ── Heatmap count markers (per-cell route count labels) ───────────────────── */
+.heat-count-marker {
+  background: none !important;
+  border: none !important;
+}
+.hcm-bubble {
+  position: absolute;
+  top: 0; left: 0;
+  transform: translate(-50%, -50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 11px;
+  color: #f1f5f9;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+  pointer-events: none;
+}
+
+/* ── Heatmap route-count badge ──────────────────────────────────────────────── */
+#heatmap-badge {
+  position: absolute;
+  bottom: 20px;
+  left: 16px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #f1f5f9;
+  padding: 7px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  border: 1px solid rgba(255,255,255,0.13);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  letter-spacing: 0.1px;
+}
+#heatmap-badge .hb-hint {
+  font-weight: 400;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-left: 6px;
+}
+
+#btn-overview.is-active {
+  color: var(--primary);
+  border-color: rgba(59,130,246,0.45);
+  background: rgba(59,130,246,0.12);
+}
+
+/* ── Overview mode: map fills route-view, bottom bar hidden ─────────────────── */
+#route-view.overview-active #split-handle  { display: none !important; }
+#route-view.overview-active #details-panel { display: none !important; }
+#route-view.overview-active #map-container { flex: 1 !important; height: auto !important; }
+
+/* ── Utility: desktop-only / mobile-only ───────────────────────────────────── */
+.hide-mobile  { }
+.show-mobile  { display: none; }
+
+/* ── Mobile UI elements (hidden on desktop) ─────────────────────────────────── */
+#mobile-lib-btn      { display: none; }
+#mobile-backdrop     { display: none; }
+#mobile-sheet-handle { display: none; }
+
+/* ── Mobile layout ───────────────────────────────────────────────────────────── */
+@media (max-width: 767px) {
+
+  /* Utility classes */
+  .hide-mobile { display: none !important; }
+  .show-mobile { display: block; }
+
+  /* Sidebar: fixed off-screen drawer */
+  #sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 700;
+    width: min(85vw, 340px) !important;
+    min-width: 0 !important;
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border-right: 1px solid rgba(255,255,255,0.1);
+  }
+  #sidebar.mobile-open {
+    transform: translateX(0);
+  }
+  /* Collapsed state on desktop should not apply on mobile — keep open when mobile-open */
+  #sidebar.collapsed:not(.mobile-open) {
+    width: min(85vw, 340px) !important;
+    min-width: 0 !important;
+  }
+  #sidebar.collapsed #sidebar-body { display: flex; }
+  #sidebar.collapsed .sidebar-logo-title { display: flex; }
+  #sidebar.collapsed #sidebar-header { justify-content: space-between; padding: 0 12px 0 16px; }
+
+  /* The toggle button in the sidebar closes the drawer on mobile */
+  #sidebar .sidebar-toggle-btn .icon-collapse { display: block !important; }
+  #sidebar .sidebar-toggle-btn .icon-expand   { display: none  !important; }
+  #sidebar .sidebar-toggle-btn { title: "Close"; }
+
+  /* Hide desktop resize handle */
+  #sidebar-resize-handle { display: none; }
+
+  /* Mobile: main fills the full app space (sidebar is out of flow) */
+  #main {
+    width: 100%;
+  }
+
+  /* Route view: fill the viewport */
+  #route-view {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+  }
+
+  /* Empty state: fill the viewport */
+  #empty-state {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    background: var(--bg);
+  }
+
+  /* Map: fill remaining space above the bottom sheet */
+  #map-container {
+    flex: 1 !important;
+    height: auto !important;
+  }
+
+  /* Map toolbar: tighten on mobile */
+  #map-toolbar {
+    top: 10px;
+    right: 10px;
+    gap: 4px;
+    padding: 5px;
+  }
+  .map-tool { width: 32px; height: 32px; }
+
+  /* Hide horizontal split handle */
+  #split-handle { display: none !important; }
+
+  /* Details panel: bottom sheet */
+  #details-panel {
+    flex: none !important;
+    height: 84px;
+    overflow: hidden;
+    padding-top: 0;
+    transition: height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    z-index: 2;
+  }
+  #details-panel.mobile-expanded {
+    height: 62vh;
+    overflow-y: auto;
+  }
+
+  /* Mobile sheet handle: tap to expand/collapse */
+  #mobile-sheet-handle {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 24px;
+    flex-shrink: 0;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+  }
+  #mobile-sheet-handle::before {
+    content: '';
+    width: 36px;
+    height: 4px;
+    background: #d1d5db;
+    border-radius: 2px;
+    transition: background 0.15s;
+  }
+  #mobile-sheet-handle:active::before { background: var(--text-muted); }
+
+  /* Stats grid: 2 columns */
+  #stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* Weather: 4 days per row */
+  #weather-days {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Route header: allow controls to wrap */
+  .route-title-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Mobile floating "Routes" button */
+  #mobile-lib-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 400;
+    padding: 8px 14px;
+    background: rgba(15, 23, 42, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 22px;
+    color: #f1f5f9;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    transition: opacity 0.15s, transform 0.12s;
+  }
+  #mobile-lib-btn:active {
+    transform: scale(0.95);
+    opacity: 0.85;
+  }
+
+  /* Mobile backdrop */
+  #mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 699;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s;
+  }
+  #mobile-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
