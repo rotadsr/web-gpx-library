@@ -844,6 +844,130 @@
     return '📁';
   }
 
+  // ── Track simplification ─────────────────────────────────────────────────────
+
+  // Haversine distance in metres
+  function geoDistM(a, b) {
+    const R = 6371000;
+    const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
+    const Δφ = (b.lat - a.lat) * Math.PI / 180;
+    const Δλ = (b.lon - a.lon) * Math.PI / 180;
+    const s = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
+  }
+
+  // Perpendicular distance (metres) from point p to segment [a,b] — planar approx
+  function perpDist(p, a, b) {
+    const C = Math.cos((a.lat + b.lat) / 2 * Math.PI / 180) * 111319;
+    const D = 111319;
+    const px = p.lon*C, py = p.lat*D;
+    const ax = a.lon*C, ay = a.lat*D;
+    const bx = b.lon*C, by = b.lat*D;
+    const dx = bx-ax, dy = by-ay;
+    if (dx === 0 && dy === 0) return Math.hypot(px-ax, py-ay);
+    const t = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / (dx*dx+dy*dy)));
+    return Math.hypot(px-ax-t*dx, py-ay-t*dy);
+  }
+
+  // Iterative Ramer-Douglas-Peucker (avoids call-stack overflow on large tracks)
+  function rdp(points, epsilon) {
+    const n = points.length;
+    if (n <= 2) return points.slice();
+    const keep = new Uint8Array(n);
+    keep[0] = keep[n-1] = 1;
+    const stack = [[0, n-1]];
+    while (stack.length) {
+      const [s, e] = stack.pop();
+      let maxD = 0, maxI = s;
+      for (let i = s+1; i < e; i++) {
+        const d = perpDist(points[i], points[s], points[e]);
+        if (d > maxD) { maxD = d; maxI = i; }
+      }
+      if (maxD > epsilon) {
+        keep[maxI] = 1;
+        stack.push([s, maxI], [maxI, e]);
+      }
+    }
+    return points.filter((_, i) => keep[i]);
+  }
+
+  // Remove GPS spike points: a point is a spike if going through it is >5× longer
+  // than skipping it AND the jump in is >100 m (avoids removing tight switchbacks)
+  function removeSpikes(points) {
+    if (points.length <= 2) return points.slice();
+    const out = [points[0]];
+    for (let i = 1; i < points.length-1; i++) {
+      const prev = out[out.length-1], curr = points[i], next = points[i+1];
+      const dIn = geoDistM(prev, curr), dOut = geoDistM(curr, next);
+      const dSkip = geoDistM(prev, next);
+      if (dIn > 100 && (dIn + dOut) > 5 * Math.max(dSkip, 1)) continue;
+      out.push(curr);
+    }
+    out.push(points[points.length-1]);
+    return out;
+  }
+
+  // Target max point count based on route distance
+  function targetPointCount(points) {
+    let d = 0;
+    const step = Math.max(1, Math.floor(points.length / 200));
+    for (let i = step; i < points.length; i += step) d += geoDistM(points[i-step], points[i]);
+    const km = d / 1000;
+    return km < 10 ? 1500 : km < 20 ? 2500 : 4000;
+  }
+
+  // De-spike → adaptive RDP until within target
+  function simplifyPoints(points) {
+    if (points.length <= 100) return points;
+    const cleaned = removeSpikes(points);
+    const target  = targetPointCount(cleaned);
+    if (cleaned.length <= target) return cleaned;
+    let epsilon = 5, result = cleaned;
+    while (result.length > target && epsilon <= 100) {
+      result  = rdp(cleaned, epsilon);
+      epsilon *= 2;
+    }
+    return result;
+  }
+
+  // Parse track points from a GPX XML string, simplify them, and return new XML
+  function simplifyGpxForSharing(xmlText) {
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) return xmlText;
+
+    const ns  = 'http://www.topografix.com/GPX/1/1';
+    const get = (el, tag) =>
+      (el.getElementsByTagNameNS(ns, tag)[0] || el.getElementsByTagName(tag)[0])
+        ?.textContent.trim() ?? null;
+
+    let els = Array.from(doc.getElementsByTagNameNS(ns, 'trkpt'));
+    if (!els.length) els = Array.from(doc.getElementsByTagName('trkpt'));
+    if (els.length < 2) return xmlText;
+
+    const raw = els.map(el => ({
+      lat:  parseFloat(el.getAttribute('lat')),
+      lon:  parseFloat(el.getAttribute('lon')),
+      ele:  get(el, 'ele'),
+      time: get(el, 'time'),
+    })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+
+    const simplified = simplifyPoints(raw);
+
+    const trkpts = simplified.map(p => {
+      let s = `\n      <trkpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">`;
+      if (p.ele  !== null) s += `<ele>${p.ele}</ele>`;
+      if (p.time !== null) s += `<time>${p.time}</time>`;
+      return s + '</trkpt>';
+    }).join('');
+
+    // Replace trkseg content; first segment gets all points, extras are dropped
+    let first = true;
+    return xmlText.replace(/(<trkseg[^>]*>)[\s\S]*?(<\/trkseg>)/g, (_, open, close) => {
+      if (first) { first = false; return open + trkpts + '\n    ' + close; }
+      return '';
+    });
+  }
+
   // ── Share via 0x0.st ─────────────────────────────────────────────────────────
 
   async function shareRoute() {
@@ -855,8 +979,15 @@
     label.textContent = 'Sharing…';
 
     try {
+      const origCount  = (currentGpxText.match(/<trkpt/g) || []).length;
+      const gpxToShare = simplifyGpxForSharing(currentGpxText);
+      const newCount   = (gpxToShare.match(/<trkpt/g) || []).length;
+      const simplifyInfo = origCount !== newCount
+        ? `Track simplified from ${origCount.toLocaleString()} to ${newCount.toLocaleString()} points for sharing.`
+        : null;
+
       const formData = new FormData();
-      formData.append('file', new Blob([currentGpxText], { type: 'application/gpx+xml' }), 'route.gpx');
+      formData.append('file', new Blob([gpxToShare], { type: 'application/gpx+xml' }), 'route.gpx');
 
       const resp = await fetch('https://0x0.st/', { method: 'POST', body: formData });
       if (!resp.ok) throw new Error('Upload failed (' + resp.status + ')');
@@ -865,7 +996,7 @@
       const x0id     = fileUrl.replace('https://0x0.st/', '');
       const shareUrl = window.location.origin + window.location.pathname + '?x0=' + x0id;
 
-      openShareModal(shareUrl);
+      openShareModal(shareUrl, simplifyInfo);
 
     } catch (err) {
       showShareToast('Could not create share link: ' + err.message);
@@ -875,17 +1006,24 @@
     }
   }
 
-  function openShareModal(url) {
-    const modal    = document.getElementById('share-modal');
-    const input    = document.getElementById('share-url-input');
-    const copyBtn  = document.getElementById('share-copy-btn');
+  function openShareModal(url, simplifyInfo) {
+    const modal   = document.getElementById('share-modal');
+    const input   = document.getElementById('share-url-input');
+    const copyBtn = document.getElementById('share-copy-btn');
+    const info    = document.getElementById('share-simplify-info');
 
     input.value = url;
     copyBtn.textContent = 'Copy';
     copyBtn.classList.remove('copied');
-    modal.style.display = 'flex';
 
-    // Select text so the user can copy immediately with Ctrl+C / Cmd+C
+    if (simplifyInfo) {
+      info.textContent = simplifyInfo;
+      info.style.display = 'block';
+    } else {
+      info.style.display = 'none';
+    }
+
+    modal.style.display = 'flex';
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
 
