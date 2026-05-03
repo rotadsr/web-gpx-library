@@ -40,7 +40,8 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Activity icons in sidebar for quick identification
 
 ### 🔗 Route Sharing
-- **Share button** in the route header — uploads the GPX to [0x0.st](https://0x0.st) and copies a short link to the clipboard
+- **Share button** in the route header — track is automatically simplified, uploaded to [0x0.st](https://0x0.st), and a short link is shown in a popup
+- Copy the link with the **Copy** button or select it manually — no clipboard permission required
 - Recipients open the link and the route loads automatically, no account or file transfer needed
 - Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
 - Links expire over time — recipients are reminded to save the route to their local library if they want to keep it
@@ -80,12 +81,15 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 
 ### Share a Route
 - Load any route from the sidebar
-- Click the **Share** button in the route header (the GPX is uploaded to 0x0.st in the background)
-- The short link is copied to your clipboard — send it to anyone
+- Click the **Share** button in the route header
+- The track is simplified and uploaded to 0x0.st; a popup appears with the short link
+- Click **Copy** or select the link manually, then send it to anyone
 - The recipient opens the link and the route loads automatically in their browser
 - A banner reminds them to save the route to their library before the link expires
 
 > **Note:** Shared links are hosted on [0x0.st](https://0x0.st), a free anonymous file host. Links expire over time (smaller files last longer). Save shared routes to your local library to keep them permanently.
+
+> **Track simplification:** Before uploading, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
 
 ### Edit a Route
 - Click the **green pencil icon** on any route
@@ -191,10 +195,6 @@ Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fl
 - **Escape** — close editor modal or exit 3D terrain view
 - **Double-click split handle** — auto-fit map and details panel
 - **Drag split handle** — manually resize map vs. details
-
-## License
-
-[Add your license here — e.g., MIT, GPL, etc.]
 
 ## Contributing
 
