@@ -662,6 +662,53 @@ body.is-resizing {
   cursor: pointer;
 }
 
+.route-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.btn-share-route {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  margin-top: 4px;
+}
+.btn-share-route:hover { background: var(--bg); color: var(--text); }
+.btn-share-route.copied { color: var(--green); border-color: var(--green); }
+
+#share-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
+  background: #1e293b;
+  color: #f8fafc;
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s;
+  pointer-events: none;
+  z-index: 9999;
+}
+#share-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .unit-toggle {
   display: inline-flex;
   align-items: center;
@@ -1556,4 +1603,3 @@ body.is-resizing {
   color: #fff;
 }
 #btn-3d.active:hover { background: var(--primary-dark); }
-
