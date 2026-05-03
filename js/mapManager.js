@@ -526,6 +526,90 @@ const MapManager = (() => {
     return { lat: c.lat, lng: c.lng, zoom: map.getZoom() };
   }
 
+  // ── Ski resort piste overlay ─────────────────────────────────────────────────
+
+  const PISTE_COLORS = {
+    novice:       '#22c55e',   // green
+    easy:         '#3b82f6',   // blue
+    intermediate: '#ef4444',   // red
+    advanced:     '#1e293b',   // black
+    expert:       '#f97316',   // orange (double-black)
+    freeride:     '#a855f7',   // purple
+  };
+
+  let skiLayers = [];
+
+  async function showSkiResort({ id, bbox }) {
+    ensureMap();
+
+    // 24-hour localStorage cache per resort
+    const CACHE_TTL = 86400000;
+    const cacheKey  = 'ski-piste-' + id;
+    let elements;
+    try {
+      const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+      if (hit && Date.now() - hit.ts < CACHE_TTL) elements = hit.data;
+    } catch (_) {}
+
+    if (!elements) {
+      const [s, w, n, e] = bbox;
+      const query =
+        `[out:json][timeout:30];` +
+        `(way["piste:type"](${s},${w},${n},${e});` +
+        ` way["aerialway"](${s},${w},${n},${e}););` +
+        `out geom;`;
+      const resp = await fetch('https://overpass-api.de/api/interpreter', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    'data=' + encodeURIComponent(query),
+      });
+      if (!resp.ok) throw new Error('Overpass error ' + resp.status);
+      const json = await resp.json();
+      elements = json.elements;
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), data: elements }));
+      } catch (_) {}
+    }
+
+    let added = 0;
+    elements.forEach(el => {
+      if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) return;
+      const coords = el.geometry.map(g => [g.lat, g.lon]);
+      const tags   = el.tags || {};
+
+      let color, weight, dashArray = null, opacity = 0.9;
+
+      if (tags.aerialway) {
+        color     = '#94a3b8';
+        weight    = 1.5;
+        dashArray = '5 5';
+        opacity   = 0.65;
+      } else {
+        const diff = tags['piste:difficulty'] || 'easy';
+        color  = PISTE_COLORS[diff] || PISTE_COLORS.easy;
+        weight = 3.5;
+      }
+
+      const line = L.polyline(coords, { color, weight, opacity, dashArray }).addTo(map);
+
+      const label = [
+        tags.name || tags['piste:name'] || '',
+        tags['piste:difficulty'] ? `(${tags['piste:difficulty']})` : (tags.aerialway || ''),
+      ].filter(Boolean).join(' ');
+      if (label) line.bindTooltip(label, { sticky: true, className: 'piste-tooltip' });
+
+      skiLayers.push(line);
+      added++;
+    });
+
+    return added;
+  }
+
+  function clearSkiResort() {
+    skiLayers.forEach(l => { try { map && map.removeLayer(l); } catch (_) {} });
+    skiLayers = [];
+  }
+
   return {
     showRoute, clearRoute,
     setMapType, getLayers, getCurrentLayer,
@@ -536,5 +620,6 @@ const MapManager = (() => {
     highlightPoint, hideHighlight,
     getViewState,
     showOverview, clearOverview, selectOverviewRoute,
+    showSkiResort, clearSkiResort,
   };
 })();
