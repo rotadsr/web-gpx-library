@@ -537,11 +537,10 @@ const MapManager = (() => {
     freeride:     '#a855f7',   // purple
   };
 
-  let skiLayers = [];
+  let skiLayers        = [];
   let skiZoomListening = false;
 
   // Weight scales with zoom so pistes appear a consistent real-world width.
-  // Calibrated so a ~30 m wide piste occupies roughly its true width on screen.
   function _pisteWeight(zoom, isLift) {
     return Math.max(1, Math.round((isLift ? 1 : 2) * Math.pow(2, zoom - 13)));
   }
@@ -551,26 +550,43 @@ const MapManager = (() => {
     skiLayers.forEach(l => l.setStyle({ weight: _pisteWeight(z, l._skiIsLift) }));
   }
 
-  async function showSkiResort({ id, bbox }) {
+  function _hidePisteLegend() {
+    const legend = document.getElementById('piste-legend');
+    if (legend) legend.style.display = 'none';
+  }
+
+  // Load piste + lift data for the current map viewport from Overpass API.
+  // Results are cached in localStorage for 24 hours keyed by rounded bounds.
+  //
+  // Opacity strategy: all segments of the same color are merged into one
+  // multi-segment L.polyline so they share a single SVG <path> element.
+  // A single path's stroke is painted as one unit — overlapping segments of
+  // the same color never compound their opacity.  Different colors remain
+  // independent elements and do composite normally.
+  async function showSkiForViewport() {
     ensureMap();
 
-    // Register zoom listener once
+    if (map.getZoom() < 10) throw new Error('zoom-too-low');
+
     if (!skiZoomListening) {
       map.on('zoomend', _updatePisteWeights);
+      map.on('click',   _hidePisteLegend);
       skiZoomListening = true;
     }
 
-    // 24-hour localStorage cache per resort
-    const CACHE_TTL = 86400000;
-    const cacheKey  = 'ski-piste-' + id;
+    const b   = map.getBounds();
+    const r   = v => Math.round(v * 100) / 100;
+    const s = r(b.getSouth()), w = r(b.getWest()),
+          n = r(b.getNorth()), e = r(b.getEast());
+    const cacheKey = `ski-vp-${s},${w},${n},${e}`;
+
     let elements;
     try {
       const hit = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-      if (hit && Date.now() - hit.ts < CACHE_TTL) elements = hit.data;
+      if (hit && Date.now() - hit.ts < 86400000) elements = hit.data;
     } catch (_) {}
 
     if (!elements) {
-      const [s, w, n, e] = bbox;
       const query =
         `[out:json][timeout:30];` +
         `(way["piste:type"](${s},${w},${n},${e});` +
@@ -589,42 +605,71 @@ const MapManager = (() => {
       } catch (_) {}
     }
 
-    const zoom = map.getZoom();
-    let added = 0;
+    // Bucket segments by color key; collect named pistes for the tooltip layer
+    const colorGroups = new Map(); // colorKey → { color, isLift, segments[] }
+    const namedPistes = [];        // { coords, label }
+
     elements.forEach(el => {
       if (el.type !== 'way' || !el.geometry || el.geometry.length < 2) return;
-      const coords  = el.geometry.map(g => [g.lat, g.lon]);
-      const tags    = el.tags || {};
-      const isLift  = !!tags.aerialway;
+      const coords = el.geometry.map(g => [g.lat, g.lon]);
+      const tags   = el.tags || {};
+      const isLift = !!tags.aerialway;
+      const color  = isLift ? '#94a3b8' : (PISTE_COLORS[tags['piste:difficulty']] || PISTE_COLORS.easy);
+      const key    = isLift ? 'lift' : color;
 
-      const color     = isLift ? '#94a3b8' : (PISTE_COLORS[tags['piste:difficulty']] || PISTE_COLORS.easy);
-      const dashArray = isLift ? '12 8' : null;
-      const weight    = _pisteWeight(zoom, isLift);
+      if (!colorGroups.has(key)) colorGroups.set(key, { color, isLift, segments: [] });
+      colorGroups.get(key).segments.push(coords);
 
-      const line = L.polyline(coords, { color, weight, opacity: 0.3, dashArray }).addTo(map);
+      const name = tags.name || tags['piste:name'] || '';
+      if (name) {
+        const diff = tags['piste:difficulty'] ? ` (${tags['piste:difficulty']})` : '';
+        namedPistes.push({ coords, label: name + diff });
+      }
+    });
+
+    const zoom = map.getZoom();
+
+    // Visual layer — one multi-segment polyline per color, interactive:false
+    colorGroups.forEach(({ color, isLift, segments }) => {
+      const line = L.polyline(segments, {
+        color,
+        weight:      _pisteWeight(zoom, isLift),
+        opacity:     0.3,
+        dashArray:   isLift ? '12 8' : null,
+        interactive: false,
+      }).addTo(map);
       line._skiIsLift = isLift;
+      skiLayers.push(line);
+    });
 
-      const label = [
-        tags.name || tags['piste:name'] || '',
-        tags['piste:difficulty'] ? `(${tags['piste:difficulty']})` : (tags.aerialway || ''),
-      ].filter(Boolean).join(' ');
-      if (label) line.bindTooltip(label, { sticky: true, className: 'piste-tooltip' });
-
-      line.on('click', () => {
+    // Interaction layer — transparent polylines over named pistes for tooltips
+    // and the click-to-show-legend gesture.  SVG pointer-events:'stroke' makes
+    // them hittable even at opacity 0.
+    namedPistes.forEach(({ coords, label }) => {
+      const line = L.polyline(coords, {
+        color:       'transparent',
+        weight:      _pisteWeight(zoom, false),
+        opacity:     0,
+        interactive: true,
+      }).addTo(map);
+      line._skiIsLift = false;
+      line.getElement()?.setAttribute('pointer-events', 'stroke');
+      line.bindTooltip(label, { sticky: true, className: 'piste-tooltip' });
+      line.on('click', e => {
+        L.DomEvent.stopPropagation(e);
         const legend = document.getElementById('piste-legend');
         if (legend) legend.style.display = '';
       });
-
       skiLayers.push(line);
-      added++;
     });
 
-    return added;
+    return colorGroups.size;
   }
 
   function clearSkiResort() {
     skiLayers.forEach(l => { try { map && map.removeLayer(l); } catch (_) {} });
     skiLayers = [];
+    _hidePisteLegend();
   }
 
   return {
@@ -637,6 +682,6 @@ const MapManager = (() => {
     highlightPoint, hideHighlight,
     getViewState,
     showOverview, clearOverview, selectOverviewRoute,
-    showSkiResort, clearSkiResort,
+    showSkiForViewport, clearSkiResort,
   };
 })();
