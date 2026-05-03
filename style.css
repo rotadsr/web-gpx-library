@@ -1587,6 +1587,84 @@ body.is-resizing {
 .confirm-cancel   { background: var(--bg); border: 1px solid var(--border); color: var(--text-muted); }
 .confirm-cancel:hover { border-color: var(--text-muted); color: var(--text); }
 
+/* ── Share modal ────────────────────────────────────────────────────────────── */
+.share-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.share-dialog {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 22px 24px 20px;
+  width: min(440px, 92vw);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+}
+.share-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.share-dialog-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.share-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: var(--text-muted);
+  padding: 2px 5px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.12s;
+}
+.share-close-btn:hover { color: var(--text); }
+.share-dialog-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+.share-link-row {
+  display: flex;
+  gap: 8px;
+}
+.share-url-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-family: ui-monospace, 'Cascadia Code', 'Menlo', monospace;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  cursor: text;
+}
+.share-url-input:focus { outline: none; border-color: var(--primary); }
+.share-copy-btn {
+  flex-shrink: 0;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.share-copy-btn:hover  { background: var(--primary-dark); }
+.share-copy-btn.copied { background: var(--green); }
+
 /* ── Leaflet overrides ──────────────────────────────────────────────────────── */
 .leaflet-control-attribution { font-size: 10px !important; }
 .leaflet-control-zoom { border-color: var(--border) !important; }
