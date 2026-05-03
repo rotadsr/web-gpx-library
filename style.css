@@ -1630,8 +1630,14 @@ body.is-resizing {
 .share-dialog-hint {
   font-size: 13px;
   color: var(--text-muted);
-  margin-bottom: 14px;
+  margin-bottom: 6px;
   line-height: 1.5;
+}
+.share-simplify-info {
+  font-size: 11px;
+  color: var(--primary);
+  margin-bottom: 12px;
+  line-height: 1.4;
 }
 .share-link-row {
   display: flex;
