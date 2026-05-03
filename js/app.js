@@ -2873,11 +2873,7 @@
       for (const resort of SKI_RESORTS) {
         const cached = !!localStorage.getItem('ski-piste-' + resort.id);
         try {
-          const count = await MapManager.showSkiResort(resort);
-          if (count) {
-            const legend = document.getElementById('piste-legend');
-            if (legend) legend.style.display = '';
-          }
+          await MapManager.showSkiResort(resort);
         } catch (_) {}
         if (!cached) await new Promise(r => setTimeout(r, 400));
       }
