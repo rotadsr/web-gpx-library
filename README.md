@@ -40,9 +40,10 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Activity icons in sidebar for quick identification
 
 ### 🔗 Route Sharing
-- **Share button** in the route header — generates a self-contained URL with the full GPX encoded in it
+- **Share button** in the route header — uploads the GPX to [0x0.st](https://0x0.st) and copies a short link to the clipboard
 - Recipients open the link and the route loads automatically, no account or file transfer needed
-- Shared routes appear in the **Uploaded Routes** section and can be saved to the recipient's library
+- Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
+- Links expire over time — recipients are reminded to save the route to their local library if they want to keep it
 
 ### ⚙️ User-Friendly Workflow
 1. **Upload** a GPX file (drag & drop or click)
@@ -79,12 +80,12 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 
 ### Share a Route
 - Load any route from the sidebar
-- Click the **Share** button in the route header
-- The link is copied to your clipboard — send it to anyone
+- Click the **Share** button in the route header (the GPX is uploaded to 0x0.st in the background)
+- The short link is copied to your clipboard — send it to anyone
 - The recipient opens the link and the route loads automatically in their browser
-- They can save it to their own library with the yellow save button
+- A banner reminds them to save the route to their library before the link expires
 
-> **Note:** Share URLs embed the full GPX file (compressed). They can be long for routes with many track points, but work fine for sharing via messaging apps, email, or any platform that doesn't truncate URLs.
+> **Note:** Shared links are hosted on [0x0.st](https://0x0.st), a free anonymous file host. Links expire over time (smaller files last longer). Save shared routes to your local library to keep them permanently.
 
 ### Edit a Route
 - Click the **green pencil icon** on any route
@@ -98,8 +99,8 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
 - **Storage**: Browser IndexedDB (client-side, no server)
-- **Compression**: [LZ-String](https://pieroxy.net/blog/pages/lz-string/index.html) — URL-safe GPX compression for share links
-- **APIs**: 
+- **APIs**:
+  - [0x0.st](https://0x0.st) — anonymous file hosting for route share links (free, no key)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
   - [Nominatim](https://nominatim.org/) — reverse geocoding (free)
 
@@ -191,6 +192,9 @@ Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fl
 - **Double-click split handle** — auto-fit map and details panel
 - **Drag split handle** — manually resize map vs. details
 
+## License
+
+[Add your license here — e.g., MIT, GPL, etc.]
 
 ## Contributing
 
