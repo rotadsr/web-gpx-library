@@ -1164,13 +1164,11 @@
       const gpxFile = Object.values(data.files).find(f => f.filename.endsWith('.gpx'));
       if (!gpxFile) throw new Error('No GPX file in gist');
 
-      let gpxText;
-      if (gpxFile.truncated) {
+      let gpxText = (!gpxFile.truncated && gpxFile.content) ? gpxFile.content : null;
+      if (!gpxText) {
         const rawResp = await fetch(gpxFile.raw_url);
-        if (!rawResp.ok) throw new Error('Failed to fetch GPX content');
+        if (!rawResp.ok) throw new Error('Failed to fetch GPX content (' + rawResp.status + ')');
         gpxText = await rawResp.text();
-      } else {
-        gpxText = gpxFile.content;
       }
 
       const parsed      = GPXParser.parse(gpxText);
@@ -1189,13 +1187,19 @@
       renderFileTree();
 
       const li = document.querySelector(`.route-item[data-id="${sharedRoute.id}"]`);
-      if (li) await loadRoute(sharedRoute, li);
+      if (li) {
+        try {
+          await loadRoute(sharedRoute, li);
+        } catch (loadErr) {
+          console.warn('loadRoute error for shared route:', loadErr);
+        }
+      }
 
       showSharedRouteBanner(sharedRoute);
 
     } catch (err) {
       console.warn('Failed to load shared route:', err);
-      showShareToast('Could not load shared route — the gist may no longer exist.');
+      showShareToast('Could not load shared route: ' + err.message);
     }
   }
 
