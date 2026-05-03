@@ -146,11 +146,17 @@
               <h2 id="route-name"></h2>
               <span id="route-difficulty-badge" class="route-difficulty-badge" style="display:none"></span>
             </div>
-            <div class="unit-toggle" id="unit-toggle">
-              <span class="unit-label">Unit:</span>
-              <button class="unit-opt is-active" data-unit="metric"   title="Metric (km, m, km/h)">km</button>
-              <span  class="unit-sep">|</span>
-              <button class="unit-opt"           data-unit="imperial" title="Imperial (mi, ft, mph)">mi</button>
+            <div class="route-header-controls">
+              <button id="btn-share-route" class="btn-share-route" title="Copy share link to clipboard">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Share
+              </button>
+              <div class="unit-toggle" id="unit-toggle">
+                <span class="unit-label">Unit:</span>
+                <button class="unit-opt is-active" data-unit="metric"   title="Metric (km, m, km/h)">km</button>
+                <span  class="unit-sep">|</span>
+                <button class="unit-opt"           data-unit="imperial" title="Imperial (mi, ft, mph)">mi</button>
+              </div>
             </div>
           </div>
           <p id="route-description"></p>
@@ -320,6 +326,8 @@
   </div>
 </div>
 
+<!-- LZ-String (GPX share URL compression) -->
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 <!-- Leaflet -->
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Chart.js -->
