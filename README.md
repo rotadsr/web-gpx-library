@@ -44,6 +44,11 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
 - All filters (search, activity, difficulty) stack and work together
 
+### 📥 Download
+- **Download button** in the route header — choose between two options:
+  - **Full track** — downloads the original GPX file as-is
+  - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
+
 ### 🔗 Route Sharing
 - **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a link is shown in a popup
 - Copy the link with the **Copy** button or select it manually — no clipboard permission required
@@ -61,8 +66,9 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 2. **Preview** on the interactive map with full stats
 3. **Save** to your library (persists across browser sessions)
 4. **Edit metadata** inline — pencil icons next to name, description, and author
-5. **Share** a link directly — no file attachments needed
-6. **Export** for backup, or enable auto-backup to a private GitHub repository
+5. **Download** the full or simplified track at any time
+6. **Share** a link directly — no file attachments needed
+7. **Export** for backup, or enable auto-backup to a private GitHub repository
 
 ## How to Use
 
