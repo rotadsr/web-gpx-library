@@ -27,19 +27,12 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Difficulty rating** — smart algorithm based on distance, elevation, and gradient
 - **7-day weather forecast** — powered by Open-Meteo API (no key required)
 
-### 📝 Full Route Editor
-- Draw and edit track points directly on the map
-- Drag points to reposition, click to select
-- Undo, delete, and clear track operations
-- Set activity type (25+ options: hiking, climbing, cycling, skiing, etc.)
-- Raw XML editor for advanced users
-- Download edited routes as GPX files
-
 ### 💾 Persistent Library
 - **My Library** — save routes permanently to the browser (IndexedDB)
 - **Session uploads** — temporary routes for quick preview
+- **Inline metadata editing** — click the pencil icon next to a route name, description, or author to edit in place; changes are saved immediately to the library and synced into the GPX file
 - **Export/import** — backup your library as JSON, restore with merge or overwrite
-- **Backup reminders** — browser warns before leaving if changes aren't exported
+- **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes)
 
 ### 🔍 Search & Filter
 - Full-text search across route names, descriptions, and tags
@@ -66,10 +59,10 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 ### ⚙️ User-Friendly Workflow
 1. **Upload** a GPX file (drag & drop or click)
 2. **Preview** on the interactive map with full stats
-3. **Edit** if needed (redraw track, change metadata)
-4. **Save** to your library (persists across browser sessions)
+3. **Save** to your library (persists across browser sessions)
+4. **Edit metadata** inline — pencil icons next to name, description, and author
 5. **Share** a link directly — no file attachments needed
-6. **Export** for backup
+6. **Export** for backup, or enable auto-backup to a private GitHub repository
 
 ## How to Use
 
@@ -82,9 +75,8 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 3. Click to view on the map
 
 ### Save to Library
-- Click the **yellow save button** on uploaded routes, or
-- Open editor → edit route → click **"Save to Library"**
-- Routes persist and sync across browser restarts
+- Click the **yellow save button** on any uploaded route
+- Routes persist across browser sessions in IndexedDB
 
 ### Export Your Library
 - Click **"···"** → **Export** in the library header
@@ -109,10 +101,20 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 
 > **Track simplification:** Before sharing, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
 
-### Edit a Route
-- Click the **green pencil icon** on any route
-- Full editor opens with map, track editor, and metadata forms
-- Download as GPX when done, or save directly to library
+### Edit Route Metadata
+- With any route loaded, hover over the **route name** or **description** in the details panel to reveal a pencil icon — click to edit in place
+- Click the **Author** stat card to edit the author name
+- Changes are saved immediately to the library and written back into the GPX file
+- To edit track points, use a dedicated GPX editing app (e.g. [GPX Studio](https://gpx.studio/), [Garmin Connect](https://connect.garmin.com/))
+
+### Auto-Backup to GitHub
+- Click **"···"** → **Backup settings** in the library header
+- Enter a repository name in `username/repo-name` format (the repo must already exist; make it private to keep routes confidential)
+- Your token needs both `repo` and `gist` scopes — a link in the dialog opens GitHub's token creation page with the right scopes pre-filled
+- Once saved, the library is automatically pushed as `gpx-library.json` to that repository 30 seconds after any change
+- The sidebar shows a live status: **Backup in 30s…** → **Backing up…** → **✓ Backed up just now**
+- Use **"···"** → **Back up now** to trigger an immediate backup at any time
+- Leave the repository field empty and click Save to disable backup
 
 ### Search & Filter
 - Type in the search bar to filter by name, description, activity, location, or difficulty
@@ -132,6 +134,7 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - **Storage**: Browser IndexedDB (client-side, no server)
 - **APIs**:
   - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
+  - [GitHub Contents API](https://docs.github.com/en/rest/repos/contents) — optional library backup to a private repo (needs `repo` scope)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
   - [Nominatim](https://nominatim.org/) — reverse geocoding for location search (free)
   - [Overpass API](https://overpass-api.de/) — ski resort piste & lift data from OpenStreetMap (free; results cached 24 h in localStorage)
@@ -148,8 +151,7 @@ web-gpx-library/
 │   ├── gpxParser.js        # GPX parsing & stats
 │   ├── mapManager.js       # Leaflet integration
 │   ├── view3d.js           # MapLibre GL 3D terrain view
-│   ├── activities.js       # Activity catalogue
-│   └── editor.js           # Route editor modal
+│   └── activities.js       # Activity catalogue
 └── README.md               # This file
 ```
 
@@ -177,11 +179,12 @@ Then open `http://localhost:8000` in your browser.
 
 ## Data & Privacy
 
-- **All data stays in your browser.** No server, no tracking, no cloud sync.
+- **All data stays in your browser.** No server, no tracking.
 - IndexedDB is local to your device and browser.
 - Route difficulty and geocoded locations are cached in localStorage for fast filtering.
 - Ski resort piste data is cached in localStorage (24-hour TTL) and never leaves your browser.
-- Export your library regularly for backup.
+- Your GitHub PAT is stored only in your browser's localStorage and is sent exclusively to `api.github.com`.
+- Export your library regularly for backup, or enable the GitHub auto-backup feature.
 - Clearing browser site data will delete your library (export first!).
 
 ## Browser Support
@@ -248,7 +251,9 @@ When a route is first opened (or when overview mode loads all routes), its centr
 
 ## Keyboard Shortcuts
 
-- **Escape** — close editor modal or exit 3D terrain view
+- **Escape** — cancel inline editing or exit 3D terrain view
+- **Enter** — confirm inline name edit
+- **Cmd/Ctrl + Enter** — confirm inline description edit
 - **Double-click split handle** — auto-fit map and details panel
 - **Drag split handle** — manually resize map vs. details
 

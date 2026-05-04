@@ -59,6 +59,7 @@
           </div>
         </div>
         <div id="file-tree"></div>
+        <div id="backup-status-bar"><span id="backup-status" class="backup-status" style="display:none"></span></div>
       </div>
 
       <!-- Upload zone -->
@@ -199,6 +200,9 @@
             <div class="route-name-group">
               <span id="route-activity-icon" class="route-activity-icon" style="display:none"></span>
               <h2 id="route-name"></h2>
+              <button class="field-edit-btn" id="edit-btn-name" title="Edit route name" aria-label="Edit route name">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+              </button>
               <span id="route-difficulty-badge" class="route-difficulty-badge" style="display:none"></span>
             </div>
             <div class="route-header-controls">
@@ -214,7 +218,9 @@
               </div>
             </div>
           </div>
-          <p id="route-description"></p>
+          <div class="route-desc-row">
+            <p id="route-description"></p><button class="field-edit-btn" id="edit-btn-description" title="Edit description" aria-label="Edit description"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
+          </div>
         </div>
 
         <div id="stats-grid">
@@ -250,8 +256,8 @@
             <span class="stat-label">Avg speed <span class="edit-hint">edit</span></span>
             <span class="stat-value" id="stat-avg-speed">—</span>
           </div>
-          <div class="stat-card">
-            <span class="stat-label">Author</span>
+          <div class="stat-card editable-stat" data-field-edit="author" title="Click to edit author">
+            <span class="stat-label">Author <span class="edit-hint">edit</span></span>
             <span class="stat-value" id="stat-author" style="font-size:14px">—</span>
           </div>
         </div>
@@ -335,91 +341,27 @@
   </div>
 </div>
 
-<!-- ── GPX Editor Modal ──────────────────────────────────────────────────── -->
-<div id="editor-modal" class="editor-overlay">
-  <div class="editor-layout">
-
-    <!-- Left sidebar: forms -->
-    <aside class="editor-sidebar">
-      <div class="editor-sb-header">
-        <h2 class="editor-title">Edit Route</h2>
-        <button id="editor-close-btn" class="editor-close-btn" title="Close (Esc)">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
-      </div>
-
-      <div class="editor-name-row">
-        <label class="edit-label">Route name</label>
-        <input type="text" id="edit-name" class="edit-input" placeholder="Route name" />
-      </div>
-
-      <div class="editor-tabs">
-        <button class="editor-tab is-active" data-tab="info">Info</button>
-        <button class="editor-tab"           data-tab="xml">XML</button>
-      </div>
-
-      <div class="editor-pane-wrap">
-        <!-- Info pane -->
-        <div id="epane-info" class="editor-pane">
-          <div class="edit-field">
-            <label class="edit-label">Activity type</label>
-            <select id="edit-activity" class="edit-input edit-select"></select>
-          </div>
-          <div class="edit-field">
-            <label class="edit-label">Description</label>
-            <textarea id="edit-description" class="edit-textarea" rows="4" placeholder="Describe this route…"></textarea>
-          </div>
-          <p class="edit-hint-text">Click on the map to add track points. Drag existing points to reposition them. Click a point to select it.</p>
-        </div>
-
-        <!-- XML pane -->
-        <div id="epane-xml" class="editor-pane" hidden>
-          <label class="edit-label">GPX XML</label>
-          <textarea id="edit-xml" class="edit-xml-area" spellcheck="false" autocomplete="off"></textarea>
-          <button id="apply-xml-btn" class="btn-editor-sm">↺ Apply XML to map</button>
-        </div>
-      </div>
-
-      <!-- Download section (pinned to bottom) -->
-      <div class="editor-download-bar">
-        <div class="edit-field">
-          <label class="edit-label">Author <span class="required-star">*</span></label>
-          <input type="text" id="edit-author" class="edit-input" placeholder="Your name" />
-          <span class="edit-hint-text">Required to generate the GPX metadata.</span>
-        </div>
-        <button id="save-to-library-btn" class="btn-save-library">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-          Save to Library
-        </button>
-        <button id="download-gpx-btn" class="btn-download">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download GPX
-        </button>
-      </div>
-    </aside>
-
-    <!-- Right: map + track-editing toolbar -->
-    <div class="editor-map-area">
-      <div class="editor-map-toolbar">
-        <span class="editor-map-hint">Click map · add point &nbsp;|&nbsp; Drag point · move &nbsp;|&nbsp; Click point · select</span>
-        <div class="editor-tool-btns">
-          <button id="tool-delete-pt" class="editor-tool-btn" disabled title="Delete selected point">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6M9 6V4h6v2"/></svg>
-            Delete
-          </button>
-          <button id="tool-undo-pt" class="editor-tool-btn" title="Remove last point (or selected)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-            Undo
-          </button>
-          <button id="tool-clear-pts" class="editor-tool-btn editor-tool-danger" title="Clear all track points">Clear</button>
-        </div>
-        <span id="edit-point-count" class="edit-pt-count"></span>
-      </div>
-      <div id="editor-map"></div>
+<!-- ── Backup Settings Modal ────────────────────────────────────────────── -->
+<div id="backup-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
+  <div class="share-dialog pat-dialog">
+    <div class="share-dialog-header">
+      <h3 id="backup-modal-title">GitHub Backup Settings</h3>
+      <button id="backup-modal-close" class="share-close-btn" title="Close">✕</button>
     </div>
-
+    <p class="share-dialog-hint">Your library will be automatically saved as <code>gpx-library.json</code> in a private GitHub repository, 30 seconds after any change.</p>
+    <p class="share-dialog-hint">Your token needs the <code>repo</code> scope (in addition to <code>gist</code> for sharing). Leave the field empty to disable backup.</p>
+    <div class="pat-input-row">
+      <input type="text" id="backup-repo-input" class="share-url-input pat-token-input" placeholder="username/repo-name" autocomplete="off" spellcheck="false" />
+    </div>
+    <p id="backup-error" class="pat-error"></p>
+    <div class="pat-actions">
+      <a href="https://github.com/settings/tokens/new?scopes=repo,gist&description=GPX+Library" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token with repo + gist scopes ↗</a>
+      <button id="backup-save-btn" class="share-copy-btn">Save</button>
+    </div>
+    <p class="pat-privacy-note">The repository must already exist. Make it private to keep your routes confidential.</p>
   </div>
 </div>
+
 
 <!-- Leaflet -->
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -434,7 +376,6 @@
 <script src="js/gpxParser.js"></script>
 <script src="js/mapManager.js"></script>
 <script src="js/activities.js"></script>
-<script src="js/editor.js"></script>
 <script src="js/view3d.js"></script>
 <script src="js/app.js"></script>
 
