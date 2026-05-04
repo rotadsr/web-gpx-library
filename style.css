@@ -763,6 +763,35 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 .btn-share-route.copied { color: var(--green); border-color: var(--green); }
 .btn-share-route:disabled { opacity: 0.6; cursor: default; }
 
+.btn-download-wrap {
+  position: relative;
+}
+.download-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+  overflow: hidden;
+  z-index: 200;
+  min-width: 160px;
+}
+.download-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 14px;
+  font-size: 13px;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+}
+.download-menu-item:hover { background: var(--bg); }
+
 #shared-route-banner {
   display: flex;
   align-items: center;
