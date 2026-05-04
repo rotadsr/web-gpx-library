@@ -161,12 +161,15 @@
 
     buildCategoryPills();
     renderFileTree();
+    updateBackupStatus('idle');
 
     checkSharedGistParam();
 
+    let searchDebounceTimer = null;
     document.getElementById('search-input').addEventListener('input', e => {
       searchQuery = e.target.value.toLowerCase().trim();
-      renderFileTree();
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(renderFileTree, 250);
     });
   }
 
@@ -268,6 +271,11 @@
       addDivider();
       addItem('⬆  Import…', () => document.getElementById('import-lib-input').click());
       addItem('⬇  Export', doExport);
+      addDivider();
+      if (getBackupRepo() && getPat()) {
+        addItem('☁  Back up now', pushLibraryBackup);
+      }
+      addItem('☁  Backup settings', openBackupModal);
     }, anchor);
   }
 
@@ -320,6 +328,7 @@
       try {
         const count = await Storage.importLibrary(text, mode);
         savedRoutes = (await Storage.getAllRoutes()).map(r => ({ ...r, source: 'saved' }));
+        if (savedRoutes.length > 0) { backupNeeded = true; scheduleBackup(); }
         buildCategoryPills();
         renderFileTree();
         alert(`Imported ${count} route${count !== 1 ? 's' : ''} successfully.`);
@@ -377,6 +386,7 @@
       uploadedRoutes = uploadedRoutes.filter(r => r.id !== route.id);
       if (activeRouteId === route.id) activeRouteId = id;
       backupNeeded = true;
+      scheduleBackup();
       buildCategoryPills();
       renderFileTree();
     } catch (err) {
@@ -397,6 +407,7 @@
         activeRouteId = null;
       }
       backupNeeded = savedRoutes.length > 0;
+      if (backupNeeded) scheduleBackup();
       buildCategoryPills();
       renderFileTree();
     } catch (err) {
@@ -406,34 +417,128 @@
   }
 
   /** Called by the editor when the user clicks "Save to Library". */
-  async function handleEditorSave(routeData, originalRoute) {
-    try {
-      if (originalRoute.source === 'saved' && typeof originalRoute.id === 'number') {
-        // Update existing saved route
-        const updated = { ...routeData, id: originalRoute.id };
-        await Storage.saveRoute(updated);
-        const idx = savedRoutes.findIndex(r => r.id === originalRoute.id);
-        if (idx >= 0) savedRoutes[idx] = { ...updated, source: 'saved' };
-      } else {
-        // Save as new library entry
-        const folder = (originalRoute.folder && originalRoute.folder !== 'Uploads')
-          ? originalRoute.folder : 'My Routes';
-        const id = await Storage.saveRoute({ ...routeData, folder });
-        savedRoutes.push({ ...routeData, folder, id, source: 'saved' });
-        if (originalRoute.source === 'upload') {
-          uploadedRoutes = uploadedRoutes.filter(r => r.id !== originalRoute.id);
-          if (activeRouteId === originalRoute.id) activeRouteId = id;
-        }
+  // ── Inline field editing ──────────────────────────────────────────────────────
+
+  function patchGpxMeta(gpxText, patches) {
+    if (!gpxText) return gpxText;
+    const doc  = new DOMParser().parseFromString(gpxText, 'text/xml');
+    const root = doc.documentElement;
+    const ns   = root.namespaceURI || '';
+
+    function childByTag(parent, tag) {
+      for (const child of parent.children) {
+        if (child.localName === tag) return child;
       }
-      backupNeeded = true;
-      buildCategoryPills();
-      renderFileTree();
-      return true;
-    } catch (err) {
-      console.error('Editor save error:', err);
-      alert('Could not save route: ' + err.message);
-      return false;
+      return null;
     }
+    function setOrCreate(parent, tag, val) {
+      let el = childByTag(parent, tag);
+      if (!el) {
+        el = ns ? doc.createElementNS(ns, tag) : doc.createElement(tag);
+        parent.appendChild(el);
+      }
+      el.textContent = val;
+    }
+
+    let meta = childByTag(root, 'metadata');
+    function ensureMeta() {
+      if (!meta) {
+        meta = ns ? doc.createElementNS(ns, 'metadata') : doc.createElement('metadata');
+        root.insertBefore(meta, root.firstChild);
+      }
+      return meta;
+    }
+
+    if ('name' in patches) {
+      setOrCreate(ensureMeta(), 'name', patches.name ?? '');
+      for (const child of Array.from(root.children)) {
+        if (child.localName === 'trk') setOrCreate(child, 'name', patches.name ?? '');
+      }
+    }
+    if ('description' in patches) setOrCreate(ensureMeta(), 'desc', patches.description ?? '');
+    if ('author' in patches) {
+      const m = ensureMeta();
+      let a = childByTag(m, 'author');
+      if (!a) {
+        a = ns ? doc.createElementNS(ns, 'author') : doc.createElement('author');
+        m.appendChild(a);
+      }
+      setOrCreate(a, 'name', patches.author ?? '');
+    }
+
+    return new XMLSerializer().serializeToString(doc);
+  }
+
+  async function saveRouteField(field, value) {
+    const route = savedRoutes.find(r => r.id === activeRouteId)
+                || uploadedRoutes.find(r => r.id === activeRouteId);
+    if (!route) return;
+
+    const newGpxText = route.gpxText ? patchGpxMeta(route.gpxText, { [field]: value }) : route.gpxText;
+    route.gpxText  = newGpxText;
+    route._parsed  = null;
+    currentGpxText = newGpxText;
+
+    if (field === 'name')        { route.name        = value; }
+    if (field === 'description') { route.description = value; }
+    if (field === 'author')      { currentMeta = { ...currentMeta, author: value }; }
+
+    if (route.source === 'saved') {
+      try {
+        await Storage.saveRoute({ ...route });
+        const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
+        if (idx >= 0) savedRoutes[idx] = route;
+      } catch (err) {
+        console.error('saveRouteField error:', err);
+        showShareToast('Could not save: ' + err.message);
+        return;
+      }
+    } else {
+      const idx = uploadedRoutes.findIndex(r => r.id === activeRouteId);
+      if (idx >= 0) uploadedRoutes[idx] = route;
+    }
+
+    backupNeeded = true;
+    scheduleBackup();
+    if (field === 'name') renderFileTree();
+  }
+
+  function startContentEdit(displayEl, currentValue, multiline, onSave) {
+    if (displayEl.isContentEditable) return;
+    displayEl.setAttribute('contenteditable', 'plaintext-only');
+    displayEl.textContent = currentValue;
+    displayEl.classList.add('is-content-editing');
+    displayEl.focus();
+    const range = document.createRange();
+    range.selectNodeContents(displayEl);
+    range.collapse(false);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+
+    let done = false;
+    function commit() {
+      if (done) return;
+      done = true;
+      const val = displayEl.textContent.trim();
+      displayEl.removeAttribute('contenteditable');
+      displayEl.classList.remove('is-content-editing');
+      if (val !== currentValue.trim()) onSave(val);
+      else displayEl.textContent = currentValue;
+    }
+    function cancel() {
+      if (done) return;
+      done = true;
+      displayEl.removeAttribute('contenteditable');
+      displayEl.classList.remove('is-content-editing');
+      displayEl.textContent = currentValue;
+    }
+
+    displayEl.addEventListener('blur', commit, { once: true });
+    displayEl.addEventListener('keydown', e => {
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); displayEl.blur(); }
+      if (e.key === 'Enter' && !multiline) { e.preventDefault(); commit(); displayEl.blur(); }
+      if (e.key === 'Enter' && multiline && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); displayEl.blur(); }
+    });
   }
 
   // ── Upload zone ───────────────────────────────────────────────────────────────
@@ -454,6 +559,7 @@
     zone.addEventListener('dragleave', ()  => zone.classList.remove('drag-over'));
     zone.addEventListener('drop', e => {
       e.preventDefault();
+      e.stopPropagation();
       zone.classList.remove('drag-over');
       const files = Array.from(e.dataTransfer.files).filter(f => f.name.toLowerCase().endsWith('.gpx'));
       if (files.length) handleFileUpload(files);
@@ -819,7 +925,7 @@
     }
     const ci = customFolders.indexOf(oldName);
     if (ci >= 0) { customFolders[ci] = newName; saveCustomFolders(); }
-    if (toUpdate.length > 0) backupNeeded = true;
+    if (toUpdate.length > 0) { backupNeeded = true; scheduleBackup(); }
     renderFileTree();
   }
 
@@ -972,14 +1078,6 @@
       actions.appendChild(moveBtn);
     }
 
-    // Green edit button — all routes
-    const editBtn = document.createElement('button');
-    editBtn.className = 'route-action-btn btn-route-edit';
-    editBtn.title = 'Edit route';
-    editBtn.innerHTML = SVG_PENCIL;
-    editBtn.addEventListener('click', e => { e.stopPropagation(); openEditor(route); });
-    actions.appendChild(editBtn);
-
     // Red delete button — saved library routes; uploaded routes use their own remove
     if (route.source === 'saved') {
       const trashBtn = document.createElement('button');
@@ -1005,27 +1103,6 @@
     li.appendChild(actions);
     li.addEventListener('click', () => loadRoute(route, li));
     return li;
-  }
-
-  async function openEditor(route) {
-    try {
-      let gpxText;
-      if (route.gpxText) {
-        gpxText = route.gpxText;
-      } else if (route.file) {
-        const resp = await fetch(route.file);
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        gpxText = await resp.text();
-      } else {
-        throw new Error('No GPX data available');
-      }
-      Editor.open(route, gpxText, {
-        onSaveToLibrary: (routeData) => handleEditorSave(routeData, route),
-      });
-    } catch (err) {
-      console.error('Editor load error:', err);
-      alert('Could not load route for editing:\n' + err.message);
-    }
   }
 
   // Converts a country flag emoji (e.g. 🇫🇷) to its 2-letter ISO code ("FR"), or null
@@ -1131,6 +1208,7 @@
     const routeById = {};
     const items     = [];
 
+    let difficultyCacheDirty = false;
     for (const route of allFiltered) {
       try {
         let xmlText = route.gpxText;
@@ -1139,11 +1217,11 @@
           if (resp.ok) xmlText = await resp.text();
         }
         if (!xmlText) continue;
-        const parsed   = GPXParser.parse(xmlText);
+        const parsed   = route._parsed || (route._parsed = GPXParser.parse(xmlText));
         if (!parsed.points || parsed.points.length < 2) continue;
         const activity = route.activity || parsed.metadata?.activity || null;
         const diff     = calcDifficulty(parsed.stats, activity);
-        if (difficultyCache[route.id] !== diff) { difficultyCache[route.id] = diff; saveDifficultyCache(); }
+        if (difficultyCache[route.id] !== diff) { difficultyCache[route.id] = diff; difficultyCacheDirty = true; }
         items.push({
           id:      route.id,
           name:    route.name,
@@ -1156,6 +1234,7 @@
         console.warn('Overview: skipping', route.name, e);
       }
     }
+    if (difficultyCacheDirty) saveDifficultyCache();
 
     // Geocode all items for location search (skips already-cached ones)
     items.forEach(item => {
@@ -1611,6 +1690,186 @@
     }
   }
 
+  // ── GitHub Backup ─────────────────────────────────────────────────────────────
+
+  const BACKUP_REPO_KEY  = 'gpxlib-backup-repo';
+  const BACKUP_LAST_KEY  = 'gpxlib-backup-last';
+  function getBackupRepo()     { return localStorage.getItem(BACKUP_REPO_KEY) || ''; }
+  function setBackupRepo(repo) {
+    if (repo) localStorage.setItem(BACKUP_REPO_KEY, repo.trim());
+    else localStorage.removeItem(BACKUP_REPO_KEY);
+  }
+
+  let backupTimer      = null;
+  let backupInProgress = false;
+  let lastBackupAt     = (() => {
+    const v = localStorage.getItem(BACKUP_LAST_KEY);
+    return v ? new Date(v) : null;
+  })();
+
+  function scheduleBackup() {
+    if (!getBackupRepo() || !getPat()) return;
+    clearTimeout(backupTimer);
+    backupTimer = setTimeout(pushLibraryBackup, 30_000);
+    updateBackupStatus('pending');
+  }
+
+  function utf8ToBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  async function pushLibraryBackup() {
+    const repo = getBackupRepo();
+    const pat  = getPat();
+    if (!repo || !pat || backupInProgress) return;
+
+    backupInProgress = true;
+    updateBackupStatus('syncing');
+
+    try {
+      const json    = await Storage.exportLibrary();
+      const content = utf8ToBase64(json);
+      const path    = 'gpx-library.json';
+      const apiBase = 'https://api.github.com/repos/' + repo + '/contents/' + path;
+      const headers = { Authorization: 'token ' + pat, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' };
+
+      let sha;
+      const getResp = await fetch(apiBase, { headers });
+      if (getResp.ok) {
+        sha = (await getResp.json()).sha;
+      } else if (getResp.status !== 404) {
+        throw new Error('Could not check existing backup (' + getResp.status + ')');
+      }
+
+      const putBody = { message: 'GPX Library backup — ' + new Date().toISOString().slice(0, 10), content };
+      if (sha) putBody.sha = sha;
+
+      const putResp = await fetch(apiBase, { method: 'PUT', headers, body: JSON.stringify(putBody) });
+      if (putResp.status === 401) { clearPat(); throw new Error('token_rejected'); }
+      if (!putResp.ok) throw new Error('Backup failed (' + putResp.status + ')');
+
+      lastBackupAt = new Date();
+      localStorage.setItem(BACKUP_LAST_KEY, lastBackupAt.toISOString());
+      backupNeeded = false;
+      updateBackupStatus('ok');
+    } catch (err) {
+      if (err.message === 'token_rejected') {
+        showShareToast('Backup: token rejected — please re-enter your GitHub token.');
+      } else {
+        console.warn('GitHub backup failed:', err.message);
+        showShareToast('Auto-backup failed: ' + err.message);
+      }
+      updateBackupStatus('error');
+    } finally {
+      backupInProgress = false;
+    }
+  }
+
+  function formatBackupAge(date) {
+    const mins = Math.round((Date.now() - date.getTime()) / 60000);
+    if (mins < 1)  return 'just now';
+    if (mins < 60) return mins + 'm ago';
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24)  return hrs + 'h ago';
+    return Math.round(hrs / 24) + 'd ago';
+  }
+
+  function updateBackupStatus(state) {
+    const el = document.getElementById('backup-status');
+    if (!el) return;
+    const repo = getBackupRepo();
+    if (!repo) { el.style.display = 'none'; return; }
+    el.style.display = 'inline-flex';
+    if (state === 'ok') {
+      el.textContent = '✓ Backed up ' + (lastBackupAt ? formatBackupAge(lastBackupAt) : '');
+      el.className = 'backup-status ok';
+    } else if (state === 'syncing') {
+      el.textContent = '↑ Backing up…';
+      el.className = 'backup-status syncing';
+    } else if (state === 'pending') {
+      el.textContent = '↑ Backup in 30s…';
+      el.className = 'backup-status pending';
+    } else if (state === 'error') {
+      el.textContent = '⚠ Backup failed';
+      el.className = 'backup-status error';
+    } else if (state === 'idle') {
+      el.textContent = lastBackupAt ? '✓ Backed up ' + formatBackupAge(lastBackupAt) : '↑ Backup configured';
+      el.className = 'backup-status ok';
+    }
+  }
+
+  function openBackupModal() {
+    document.getElementById('backup-repo-input').value = getBackupRepo();
+    document.getElementById('backup-error').textContent = '';
+    const saveBtn = document.getElementById('backup-save-btn');
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save';
+    document.getElementById('backup-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('backup-repo-input').focus(), 50);
+  }
+
+  function closeBackupModal() {
+    document.getElementById('backup-modal').style.display = 'none';
+  }
+
+  async function handleBackupSave() {
+    const input   = document.getElementById('backup-repo-input');
+    const errEl   = document.getElementById('backup-error');
+    const saveBtn = document.getElementById('backup-save-btn');
+    const repo    = input.value.trim();
+
+    if (!repo) {
+      setBackupRepo('');
+      clearTimeout(backupTimer);
+      updateBackupStatus('idle');
+      closeBackupModal();
+      return;
+    }
+
+    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+      errEl.textContent = 'Use the format: username/repo-name';
+      return;
+    }
+
+    const pat = getPat();
+    if (!pat) {
+      errEl.textContent = 'A GitHub token is required. Share a route first to set up your token, then come back here.';
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Verifying…';
+    errEl.textContent = '';
+
+    try {
+      const userResp = await fetch('https://api.github.com/user', {
+        headers: { Authorization: 'token ' + pat, Accept: 'application/vnd.github+json' },
+      });
+      if (userResp.status === 401) throw new Error('Token is invalid — please re-enter it via "Change GitHub token".');
+      const scopes = (userResp.headers.get('X-OAuth-Scopes') || '').split(',').map(s => s.trim());
+      if (!scopes.includes('repo')) {
+        throw new Error('Token is missing the "repo" scope. Create a new token with repo + gist scopes enabled.');
+      }
+
+      const repoResp = await fetch('https://api.github.com/repos/' + repo, {
+        headers: { Authorization: 'token ' + pat, Accept: 'application/vnd.github+json' },
+      });
+      if (repoResp.status === 404) throw new Error('Repository not found. Make sure it exists and your token can access it.');
+      if (!repoResp.ok) throw new Error('Could not access repository (' + repoResp.status + ')');
+
+      setBackupRepo(repo);
+      closeBackupModal();
+      scheduleBackup();
+    } catch (err) {
+      errEl.textContent = err.message;
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
+  }
+
   // ── Route loading ─────────────────────────────────────────────────────────────
 
   async function loadRoute(route, listItem) {
@@ -1644,7 +1903,7 @@
       }
 
       currentGpxText = xmlText;
-      const parsed = GPXParser.parse(xmlText);
+      const parsed = route._parsed || (route._parsed = GPXParser.parse(xmlText));
       currentPoints = parsed.points;
 
       if (!route.name && parsed.metadata.name)
@@ -2716,8 +2975,27 @@
     setupSidebarResize();
     setupSplitHandle();
 
-    // GPX editor
-    Editor.setup();
+    // Inline field editing — name, description, author
+    document.getElementById('edit-btn-name').addEventListener('click', () => {
+      if (!activeRouteId) return;
+      const el = document.getElementById('route-name');
+      startContentEdit(el, el.textContent.trim(), false, val => saveRouteField('name', val));
+    });
+    document.getElementById('edit-btn-description').addEventListener('click', () => {
+      if (!activeRouteId) return;
+      const el = document.getElementById('route-description');
+      startContentEdit(el, el.textContent.trim(), true, val => saveRouteField('description', val));
+    });
+    document.querySelector('[data-field-edit="author"]').addEventListener('click', () => {
+      if (!activeRouteId) return;
+      const card    = document.querySelector('[data-field-edit="author"]');
+      const valueEl = document.getElementById('stat-author');
+      const current = (currentMeta?.author) || '';
+      startEditing(card, valueEl, current, 'Author name', val => {
+        valueEl.textContent = val || '—';
+        saveRouteField('author', val);
+      });
+    });
 
     // Editable stats
     setupEditableStats();
@@ -2779,6 +3057,16 @@
     document.getElementById('pat-save-btn').addEventListener('click', handlePatSave);
     document.getElementById('pat-token-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') handlePatSave();
+    });
+
+    // Backup modal
+    document.getElementById('backup-modal-close').addEventListener('click', closeBackupModal);
+    document.getElementById('backup-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeBackupModal();
+    });
+    document.getElementById('backup-save-btn').addEventListener('click', handleBackupSave);
+    document.getElementById('backup-repo-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleBackupSave();
     });
 
     // Shared-route expiration banner
@@ -2870,11 +3158,11 @@
       }
     }, true);
 
-    // Backup reminder — prompt before leaving if library has unexported changes
+    // Prompt before leaving if library has unexported/unbacked-up changes
     window.addEventListener('beforeunload', e => {
-      if (backupNeeded) {
+      if (backupNeeded && !getBackupRepo()) {
         e.preventDefault();
-        e.returnValue = ''; // required for Chrome/Edge to show the dialog
+        e.returnValue = '';
       }
     });
 
