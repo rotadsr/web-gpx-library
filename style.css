@@ -735,15 +735,6 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   align-self: center;
 }
 
-/* Editor activity select */
-.edit-select {
-  appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 30px;
-  cursor: pointer;
-}
 
 .route-header-controls {
   display: flex;
@@ -1148,7 +1139,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 .ap-opt:hover  { background: var(--bg); }
 .ap-opt.is-sel { background: #eff6ff; color: var(--primary); font-weight: 600; }
 
-/* ── Route item action buttons (edit + remove) ───────────────────────────────── */
+/* ── Route item action buttons (move + remove) ───────────────────────────────── */
 .route-actions {
   position: absolute;
   right: 8px;
@@ -1183,13 +1174,6 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .btn-route-move:hover { background: rgba(59, 130, 246, 0.35); }
 
-/* Green pencil — edit */
-.btn-route-edit {
-  background: rgba(34, 197, 94, 0.18);
-  color: #16a34a;
-}
-.btn-route-edit:hover { background: rgba(34, 197, 94, 0.35); }
-
 /* Red trash — remove */
 .btn-route-remove {
   background: rgba(239, 68, 68, 0.18);
@@ -1197,221 +1181,42 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .btn-route-remove:hover { background: rgba(239, 68, 68, 0.35); }
 
-/* ── GPX Editor Modal ────────────────────────────────────────────────────────── */
-.editor-overlay {
-  display: none;          /* hidden by default — JS adds .is-open to show */
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.55);
-  z-index: 3000;
-}
-.editor-overlay.is-open { display: flex; }
-
-.editor-layout {
-  display: flex;
-  width: 100%;
-  height: 100%;
-}
-
-/* Sidebar */
-.editor-sidebar {
-  width: 320px;
-  min-width: 280px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-right: 1px solid var(--border);
-  overflow: hidden;
-}
-
-.editor-sb-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 16px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.editor-title { font-size: 16px; font-weight: 700; color: var(--text); }
-.editor-close-btn {
-  width: 28px; height: 28px;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  cursor: pointer; color: var(--text-muted); transition: all 0.12s;
-}
-.editor-close-btn svg { width: 14px; height: 14px; }
-.editor-close-btn:hover { background: var(--border); color: var(--text); }
-
-.editor-name-row {
-  padding: 12px 16px 10px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-/* Tabs */
-.editor-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.editor-tab {
-  flex: 1;
-  padding: 9px 12px;
-  font-size: 12px;
-  font-weight: 600;
+/* ── Inline field editing ────────────────────────────────────────────────────── */
+.field-edit-btn {
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
   cursor: pointer;
+  padding: 3px;
   color: var(--text-muted);
-  transition: color 0.12s, border-color 0.12s;
-}
-.editor-tab:hover { color: var(--text); }
-.editor-tab.is-active { color: var(--primary); border-bottom-color: var(--primary); }
-
-/* Panes */
-.editor-pane-wrap {
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-}
-.editor-pane { display: flex; flex-direction: column; gap: 12px; flex: 1; }
-
-.edit-field { display: flex; flex-direction: column; gap: 4px; }
-.edit-label {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--text-muted);
-}
-.required-star { color: var(--red); }
-
-.edit-input, .edit-textarea {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--text);
-  background: var(--bg);
-  transition: border-color 0.15s;
-  resize: vertical;
-}
-.edit-input:focus, .edit-textarea:focus { outline: none; border-color: var(--primary); }
-.edit-input.field-required, .edit-textarea.field-required {
-  border-color: var(--red);
-  background: #fff5f5;
-}
-
-.edit-hint-text { font-size: 11px; color: var(--text-muted); line-height: 1.5; }
-
-/* XML pane */
-#epane-xml { gap: 8px; }
-.edit-xml-area {
-  flex: 1;
-  min-height: 220px;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  resize: none;
-  padding: 10px;
-  background: #f8fafc;
-}
-.btn-editor-sm {
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--text-muted);
-  align-self: flex-start;
-  transition: all 0.12s;
-}
-.btn-editor-sm:hover { border-color: var(--primary); color: var(--primary); }
-
-/* Download bar */
-.editor-download-bar {
-  border-top: 1px solid var(--border);
-  padding: 14px 16px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  flex-shrink: 0;
-  background: var(--surface);
-}
-.btn-download {
-  display: flex;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.12s;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  background: var(--primary);
-  color: #fff;
-  border: none;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn-download:hover { background: var(--primary-dark); }
-
-/* Editor map area */
-.editor-map-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  background: var(--bg);
-}
-
-.editor-map-toolbar {
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: rgba(255,255,255,0.95);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  border-radius: 4px;
+  line-height: 1;
 }
-.editor-map-hint { font-size: 11px; color: var(--text-muted); flex: 1; min-width: 0; }
+.field-edit-btn svg { width: 13px; height: 13px; }
+.field-edit-btn:hover { color: var(--primary); background: rgba(59,130,246,0.08); }
+.route-name-group:hover .field-edit-btn,
+.route-desc-row:hover   .field-edit-btn { opacity: 1; }
 
-.editor-tool-btns { display: flex; gap: 5px; }
-.editor-tool-btn {
+.route-desc-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
-  padding: 4px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  cursor: pointer;
-  color: var(--text-muted);
-  transition: all 0.12s;
+  margin-top: 4px;
 }
-.editor-tool-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
-.editor-tool-btn:disabled { opacity: 0.4; cursor: default; }
-.editor-tool-danger:hover:not(:disabled) { border-color: var(--red); color: var(--red); }
-.edit-pt-count {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
+.route-desc-row #route-description { margin-top: 0; flex: 1; min-width: 0; }
 
-#editor-map { flex: 1; min-height: 0; }
+.is-content-editing {
+  outline: 2px solid var(--primary) !important;
+  border-radius: 4px;
+  padding: 2px 4px;
+  cursor: text;
+  white-space: pre-wrap;
+}
 
 .stat-card {
   background: var(--bg);
@@ -1624,25 +1429,6 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .btn-route-save:hover { background: rgba(245, 158, 11, 0.35); }
 
-/* ── Save to Library button in editor ───────────────────────────────────────── */
-.btn-save-library {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  padding: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  background: var(--amber);
-  color: #fff;
-  border: none;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn-save-library:hover    { background: #d97706; }
-.btn-save-library:disabled { opacity: 0.65; cursor: default; }
 
 /* ── Import confirm dialog ───────────────────────────────────────────────────── */
 .confirm-overlay {
@@ -1831,6 +1617,25 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   margin-top: 12px;
   line-height: 1.4;
 }
+
+/* ── Backup status bar ──────────────────────────────────────────────────────── */
+#backup-status-bar {
+  padding: 0 12px 8px;
+}
+.backup-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.backup-status.ok      { color: #16a34a; background: rgba(22,163,74,0.12); }
+.backup-status.pending { color: #64748b; background: rgba(100,116,139,0.12); }
+.backup-status.syncing { color: #2563eb; background: rgba(37,99,235,0.12); }
+.backup-status.error   { color: #dc2626; background: rgba(220,38,38,0.12); }
 
 /* ── Leaflet overrides ──────────────────────────────────────────────────────── */
 .leaflet-control-attribution { font-size: 10px !important; }
