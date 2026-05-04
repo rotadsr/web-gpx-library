@@ -351,6 +351,31 @@
   </div>
 </div>
 
+<!-- ── GitHub Import Modal ──────────────────────────────────────────────── -->
+<div id="gh-import-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="gh-import-modal-title">
+  <div class="share-dialog pat-dialog">
+    <div class="share-dialog-header">
+      <h3 id="gh-import-modal-title">Import from GitHub</h3>
+      <button id="gh-import-modal-close" class="share-close-btn" title="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">Fetch <code>gpx-library.json</code> from a GitHub repository. The repo must contain a file exported from this app.</p>
+    <label class="pat-input-row">
+      <span class="pat-field-label">Repository</span>
+      <input type="text" id="gh-import-repo-input" class="share-url-input pat-token-input" placeholder="username/repo-name" autocomplete="off" spellcheck="false" />
+    </label>
+    <div id="gh-import-pat-row" class="pat-input-row" style="display:none">
+      <span class="pat-field-label">GitHub token</span>
+      <input type="password" id="gh-import-pat-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+    </div>
+    <p id="gh-import-token-note" class="pat-privacy-note" style="display:none"></p>
+    <p id="gh-import-error" class="pat-error"></p>
+    <div class="pat-actions">
+      <a href="https://github.com/settings/tokens/new?scopes=repo&description=GPX+Library+Import" target="_blank" rel="noopener noreferrer" class="pat-gh-link" id="gh-import-token-link" style="display:none">Create token with repo scope ↗</a>
+      <button id="gh-import-btn" class="share-copy-btn">Import</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── Backup Settings Modal ────────────────────────────────────────────── -->
 <div id="backup-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
   <div class="share-dialog pat-dialog">
