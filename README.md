@@ -31,7 +31,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **My Library** — save routes permanently to the browser (IndexedDB)
 - **Session uploads** — temporary routes for quick preview
 - **Inline metadata editing** — click the pencil icon next to a route name, description, or author to edit in place; changes are saved immediately to the library and synced into the GPX file
-- **Export/import** — backup your library as JSON, restore with merge or overwrite
+- **Export/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository
 - **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes)
 
 ### 🔍 Search & Filter
@@ -90,9 +90,18 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - Keep as backup on your computer
 
 ### Import Previously Exported Library
-- Click **"···"** → **Import…** in the library header
-- Select a `.json` file
+Two options are available under **"···"** → **Import** in the library header:
+
+**From a local file:**
+- Click **"···"** → **Import from file…**
+- Select a `.json` file exported from this app
 - Choose **Merge** (add to existing) or **Overwrite** (replace all)
+
+**From a GitHub repository:**
+- Click **"···"** → **Import from GitHub…**
+- Enter the repository name in `username/repo-name` format — if you have a backup repo configured it will be pre-filled
+- A GitHub Personal Access Token with the `repo` scope is required; if you already have one saved it is used automatically
+- The app fetches `gpx-library.json` from that repository and prompts to Merge or Overwrite
 
 ### Share a Route
 - Load any route from the sidebar

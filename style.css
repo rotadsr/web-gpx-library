@@ -1209,6 +1209,15 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   color: #dc2626;
 }
 .btn-route-remove:hover { background: rgba(239, 68, 68, 0.35); }
+.btn-route-remove.is-confirming {
+  width: auto;
+  padding: 0 7px;
+  background: #dc2626;
+  color: #fff;
+  transform: none;
+}
+.btn-route-remove.is-confirming:hover { background: #b91c1c; transform: none; }
+.confirm-label { font-size: 11px; font-weight: 600; white-space: nowrap; pointer-events: none; }
 
 /* ── Inline field editing ────────────────────────────────────────────────────── */
 .field-edit-btn {
@@ -1618,7 +1627,8 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .share-change-token-btn:hover { color: var(--text); }
 .pat-dialog { width: min(460px, 92vw); }
-.pat-input-row { margin-bottom: 4px; }
+.pat-input-row { margin-bottom: 4px; display: flex; flex-direction: column; gap: 4px; }
+.pat-field-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .pat-token-input { font-family: ui-monospace, 'Cascadia Code', 'Menlo', monospace; }
 .pat-error {
   font-size: 12px;

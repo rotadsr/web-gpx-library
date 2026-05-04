@@ -269,7 +269,8 @@
 
       addItem('📁  New Folder', createNewFolder);
       addDivider();
-      addItem('⬆  Import…', () => document.getElementById('import-lib-input').click());
+      addItem('⬆  Import from file…', () => document.getElementById('import-lib-input').click());
+      addItem('⬆  Import from GitHub…', openGhImportModal);
       addItem('⬇  Export', doExport);
       addDivider();
       if (getBackupRepo() && getPat()) {
@@ -323,7 +324,10 @@
   async function doImport(file) {
     let text;
     try { text = await file.text(); } catch { alert('Could not read file.'); return; }
+    doImportText(text);
+  }
 
+  function doImportText(text) {
     const run = async (mode) => {
       try {
         const count = await Storage.importLibrary(text, mode);
@@ -331,7 +335,7 @@
         if (savedRoutes.length > 0) { backupNeeded = true; scheduleBackup(); }
         buildCategoryPills();
         renderFileTree();
-        alert(`Imported ${count} route${count !== 1 ? 's' : ''} successfully.`);
+        showShareToast(`Imported ${count} route${count !== 1 ? 's' : ''} successfully.`);
       } catch (err) {
         alert('Import failed: ' + err.message);
       }
@@ -341,6 +345,82 @@
       showImportConfirm(savedRoutes.length, () => run('merge'), () => run('overwrite'));
     } else {
       run('merge');
+    }
+  }
+
+  // ── Import from GitHub ────────────────────────────────────────────────────────
+
+  function openGhImportModal() {
+    const modal    = document.getElementById('gh-import-modal');
+    const repoInput = document.getElementById('gh-import-repo-input');
+    const patRow   = document.getElementById('gh-import-pat-row');
+    const patInput  = document.getElementById('gh-import-pat-input');
+    const tokenNote = document.getElementById('gh-import-token-note');
+    const tokenLink = document.getElementById('gh-import-token-link');
+    const errEl    = document.getElementById('gh-import-error');
+
+    repoInput.value = getBackupRepo() || '';
+    errEl.textContent = '';
+
+    const existingPat = getPat();
+    if (existingPat) {
+      patRow.style.display   = 'none';
+      tokenNote.style.display = 'block';
+      tokenNote.textContent  = 'Using your saved GitHub token.';
+      tokenLink.style.display = 'none';
+    } else {
+      patRow.style.display   = 'flex';
+      patInput.value         = '';
+      tokenNote.style.display = 'none';
+      tokenLink.style.display = 'inline';
+    }
+
+    modal.style.display = 'flex';
+    repoInput.focus();
+  }
+
+  function closeGhImportModal() {
+    document.getElementById('gh-import-modal').style.display = 'none';
+  }
+
+  async function handleGhImport() {
+    const repoInput = document.getElementById('gh-import-repo-input');
+    const patInput  = document.getElementById('gh-import-pat-input');
+    const errEl    = document.getElementById('gh-import-error');
+    const btn      = document.getElementById('gh-import-btn');
+
+    const repo = repoInput.value.trim();
+    const pat  = getPat() || patInput.value.trim();
+
+    errEl.textContent = '';
+    if (!repo || !repo.includes('/')) { errEl.textContent = 'Enter a valid repository (username/repo-name).'; return; }
+    if (!pat) { errEl.textContent = 'A GitHub token is required to access the repository.'; return; }
+
+    btn.disabled    = true;
+    btn.textContent = 'Fetching…';
+
+    try {
+      const resp = await fetch(`https://api.github.com/repos/${repo}/contents/gpx-library.json`, {
+        headers: { Authorization: `token ${pat}`, Accept: 'application/vnd.github+json' },
+      });
+      if (resp.status === 404) throw new Error('gpx-library.json not found in that repository.');
+      if (resp.status === 401) throw new Error('Invalid or expired token.');
+      if (!resp.ok) throw new Error(`GitHub error (${resp.status}).`);
+
+      const data  = await resp.json();
+      const bytes = Uint8Array.from(atob(data.content.replace(/\s/g, '')), c => c.charCodeAt(0));
+      const text  = new TextDecoder().decode(bytes);
+
+      // Save token if it wasn't stored yet
+      if (!getPat() && patInput.value.trim()) setPat(patInput.value.trim());
+
+      closeGhImportModal();
+      doImportText(text);
+    } catch (err) {
+      errEl.textContent = err.message;
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = 'Import';
     }
   }
 
@@ -396,7 +476,6 @@
   }
 
   async function deleteFromLibrary(id) {
-    if (!confirm('Remove this route from your library?')) return;
     try {
       await Storage.deleteRoute(id);
       const wasActive = activeRouteId === id;
@@ -1033,6 +1112,42 @@
     }
   }
 
+  // ── Inline delete confirmation ────────────────────────────────────────────────
+
+  let _confirmingBtn   = null;
+  let _confirmTimer    = null;
+  let _confirmResetFn  = null;
+
+  document.addEventListener('click', e => {
+    if (_confirmingBtn && !_confirmingBtn.contains(e.target)) _confirmResetFn?.();
+  });
+
+  function armDeleteBtn(btn, onConfirm) {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (_confirmingBtn === btn) {
+        _confirmResetFn();
+        onConfirm();
+        return;
+      }
+      _confirmResetFn?.();
+      _confirmingBtn = btn;
+      btn.classList.add('is-confirming');
+      btn.innerHTML = '<span class="confirm-label">Delete?</span>';
+      function reset() {
+        if (_confirmingBtn !== btn) return;
+        clearTimeout(_confirmTimer);
+        _confirmingBtn  = null;
+        _confirmTimer   = null;
+        _confirmResetFn = null;
+        btn.classList.remove('is-confirming');
+        btn.innerHTML = SVG_TRASH;
+      }
+      _confirmResetFn = reset;
+      _confirmTimer   = setTimeout(reset, 3000);
+    });
+  }
+
   const SVG_PENCIL      = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>`;
   const SVG_TRASH       = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
   const SVG_SAVE        = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
@@ -1084,14 +1199,14 @@
       trashBtn.className = 'route-action-btn btn-route-remove';
       trashBtn.title = 'Remove from library';
       trashBtn.innerHTML = SVG_TRASH;
-      trashBtn.addEventListener('click', e => { e.stopPropagation(); deleteFromLibrary(route.id); });
+      armDeleteBtn(trashBtn, () => deleteFromLibrary(route.id));
       actions.appendChild(trashBtn);
     } else if (route.source === 'upload') {
       const trashBtn = document.createElement('button');
       trashBtn.className = 'route-action-btn btn-route-remove';
       trashBtn.title = 'Remove upload';
       trashBtn.innerHTML = SVG_TRASH;
-      trashBtn.addEventListener('click', e => { e.stopPropagation(); removeUpload(route.id); });
+      armDeleteBtn(trashBtn, () => removeUpload(route.id));
       actions.appendChild(trashBtn);
     }
 
@@ -3090,6 +3205,16 @@
     document.getElementById('pat-save-btn').addEventListener('click', handlePatSave);
     document.getElementById('pat-token-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') handlePatSave();
+    });
+
+    // GitHub import modal
+    document.getElementById('gh-import-modal-close').addEventListener('click', closeGhImportModal);
+    document.getElementById('gh-import-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeGhImportModal();
+    });
+    document.getElementById('gh-import-btn').addEventListener('click', handleGhImport);
+    document.getElementById('gh-import-repo-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handleGhImport();
     });
 
     // Backup modal
