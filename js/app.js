@@ -1494,6 +1494,22 @@
     return data.id;
   }
 
+  // ── Download ──────────────────────────────────────────────────────────────────
+
+  function downloadGpx(gpxText, suffix) {
+    const route = savedRoutes.find(r => r.id === activeRouteId)
+               || uploadedRoutes.find(r => r.id === activeRouteId);
+    const baseName = (route?.name || 'track').replace(/[^a-z0-9_\-]/gi, '_');
+    const filename = suffix ? `${baseName}_${suffix}.gpx` : `${baseName}.gpx`;
+    const blob = new Blob([gpxText], { type: 'application/gpx+xml' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function shareRoute() {
     if (!currentGpxText) return;
     if (!getPat()) { openPatModal(); return; }
@@ -3023,6 +3039,23 @@
         if (currentWeatherData) renderWeatherDays(currentWeatherData.daily);
       });
     });
+
+    // Download button + dropdown
+    const dlBtn  = document.getElementById('btn-download-route');
+    const dlMenu = document.getElementById('download-menu');
+    dlBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      dlMenu.hidden = !dlMenu.hidden;
+    });
+    document.getElementById('dl-full').addEventListener('click', () => {
+      dlMenu.hidden = true;
+      if (currentGpxText) downloadGpx(currentGpxText, null);
+    });
+    document.getElementById('dl-simplified').addEventListener('click', () => {
+      dlMenu.hidden = true;
+      if (currentGpxText) downloadGpx(simplifyGpxForSharing(currentGpxText), 'simplified');
+    });
+    document.addEventListener('click', () => { dlMenu.hidden = true; });
 
     // Share route button
     document.getElementById('btn-share-route').addEventListener('click', shareRoute);
