@@ -1203,12 +1203,13 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 .route-desc-row:hover   .field-edit-btn { opacity: 1; }
 
 .route-desc-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
   margin-top: 4px;
 }
-.route-desc-row #route-description { margin-top: 0; flex: 1; min-width: 0; }
+.route-desc-row #route-description {
+  display: inline;
+  margin-top: 0;
+}
+.route-desc-row .field-edit-btn { vertical-align: middle; }
 
 .is-content-editing {
   outline: 2px solid var(--primary) !important;
