@@ -1833,6 +1833,7 @@
     const input   = document.getElementById('share-url-input');
     const copyBtn = document.getElementById('share-copy-btn');
     const info    = document.getElementById('share-simplify-info');
+    const qrEl    = document.getElementById('share-qr');
 
     input.value = url;
     copyBtn.textContent = 'Copy';
@@ -1845,12 +1846,24 @@
       info.style.display = 'none';
     }
 
+    // Generate QR code
+    qrEl.innerHTML = '';
+    new QRCode(qrEl, {
+      text:           url,
+      width:          160,
+      height:         160,
+      colorDark:      '#000000',
+      colorLight:     '#ffffff',
+      correctLevel:   QRCode.CorrectLevel.M,
+    });
+
     modal.style.display = 'flex';
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
 
   function closeShareModal() {
     document.getElementById('share-modal').style.display = 'none';
+    document.getElementById('share-qr').innerHTML = '';
   }
 
   function writeToClipboard(text) {
