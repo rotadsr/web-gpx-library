@@ -44,10 +44,11 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
 - All filters (search, activity, difficulty) stack and work together
 
-### 📥 Download
+### 📥 Download & Send
 - **Download button** in the route header — choose between two options:
   - **Full track** — downloads the original GPX file as-is
   - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
+- **Send GPX file button** — on mobile browsers that support the Web Share API (iOS Safari, Chrome for Android), triggers the native share sheet so you can open the full GPX directly in any installed app: Garmin Connect, Coros, Wahoo, Komoot, and others. The button is hidden on desktop browsers where file sharing is not supported.
 
 ### 🔗 Route Sharing
 - **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a link is shown in a popup
