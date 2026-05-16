@@ -2013,6 +2013,22 @@
       return;
     }
 
+    // iOS Web Share API recognises GPX files but doesn't surface third-party
+    // document-handler apps (Garmin, GPX Viewer, etc.) in its sheet.
+    // The download path — which triggers Safari's Downloads indicator — does
+    // show "Open in…" with all registered GPS apps, so we force it on iOS.
+    const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+
+    // Set platform-appropriate hint text
+    const hintEl = document.querySelector('.gpx-send-hint');
+    if (hintEl) {
+      if (isIOS) {
+        hintEl.innerHTML = 'Tap the button below to download the GPX file. When the download finishes, tap the <strong>⬇</strong> indicator in the Safari toolbar, tap the file, then tap <strong>Open in…</strong> to send it to your GPS app.';
+      } else {
+        hintEl.innerHTML = 'Tap the button below. The system will offer to open the file directly in a GPS app.';
+      }
+    }
+
     btn.addEventListener('click', async () => {
       btn.disabled      = true;
       btn.textContent   = 'Opening…';
@@ -2023,12 +2039,12 @@
         const gpxText = await gpxResp.text();
         const file    = new File([gpxText], gpxName, { type: 'application/gpx+xml' });
 
-        // Web Share API (iOS/Android) — opens the native share sheet directly,
-        // skipping the Downloads folder
-        if (navigator.canShare?.({ files: [file] })) {
+        // On Android/desktop: use Web Share API if available (opens native share sheet).
+        // On iOS: force the download path — the Downloads → Open In flow is the only
+        // reliable way to surface third-party GPS app handlers on iOS Safari.
+        if (!isIOS && navigator.canShare?.({ files: [file] })) {
           await navigator.share({ files: [file], title: gpxName.replace(/\.gpx$/i, '') });
         } else {
-          // Desktop fallback: trigger a standard download
           const url = URL.createObjectURL(file);
           const a   = document.createElement('a');
           a.href     = url;
