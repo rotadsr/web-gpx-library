@@ -1897,6 +1897,35 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .privacy-add-btn { align-self: flex-end; padding: 5px 12px; font-size: 12px; }
 .privacy-picker-radius-row { flex-shrink: 0; min-width: 200px; }
+.privacy-alias-input {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+}
+.privacy-alias-input:focus { border-color: var(--primary); }
+.privacy-zone-name-editable {
+  cursor: pointer;
+  text-decoration: underline dotted var(--text-secondary);
+  text-underline-offset: 2px;
+}
+.privacy-zone-name-editable:hover { text-decoration-color: var(--text); }
+.privacy-alias-edit-input {
+  flex: 1;
+  font-size: 13px;
+  padding: 2px 6px;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text);
+  outline: none;
+  min-width: 0;
+}
 
 /* ── Map picker overlay ──────────────────────────────────────────────────────── */
 .privacy-picker-overlay {
