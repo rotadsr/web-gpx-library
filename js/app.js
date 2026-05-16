@@ -288,6 +288,8 @@
         addItem('☁  Back up now', pushLibraryBackup);
       }
       addItem('☁  Backup settings', openBackupModal);
+      addDivider();
+      addItem('🔒  Privacy zones', openPrivacyModal);
     }, anchor);
   }
 
@@ -1678,6 +1680,445 @@
     });
   }
 
+  // ── Privacy Zones ─────────────────────────────────────────────────────────────
+
+  const ZONES_KEY = 'gpxlib-privacy-zones';
+  let privacyPending = null; // { lat, lon, name } | null — zone being composed, not yet added
+  let pickerMap      = null;
+  let pickerMarker   = null;
+  let pickerCircle   = null;
+  let pickerSelected = null; // { lat, lon } | null
+let editingZoneId  = null; // zone id being edited, or null for add mode
+
+  function getPrivacyZones() {
+    try { return JSON.parse(localStorage.getItem(ZONES_KEY)) || []; } catch { return []; }
+  }
+
+  function savePrivacyZones(zones) {
+    localStorage.setItem(ZONES_KEY, JSON.stringify(zones));
+  }
+
+  function addPrivacyZone(zone) {
+    const zones = getPrivacyZones();
+    zones.push({ ...zone, id: Date.now() });
+    savePrivacyZones(zones);
+    return zones;
+  }
+
+  function removePrivacyZone(id) {
+    const zones = getPrivacyZones().filter(z => z.id !== id);
+    savePrivacyZones(zones);
+    return zones;
+  }
+
+  function updatePrivacyZone(id, updates) {
+    const zones = getPrivacyZones().map(z => z.id === id ? { ...z, ...updates } : z);
+    savePrivacyZones(zones);
+    return zones;
+  }
+
+  function privacyHaversineKm(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const toRad = d => d * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2
+            + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  const PRIVACY_RADIUS_DEFAULT = 2.0; // km
+
+  function _formatRadius(km) {
+    return km < 1 ? Math.round(km * 1000) + ' m' : km.toFixed(1) + ' km';
+  }
+
+  function _initRadiusEditor(sliderId, spanId, inputId) {
+    const slider = document.getElementById(sliderId);
+    const span   = document.getElementById(spanId);
+    const input  = document.getElementById(inputId);
+
+    span.addEventListener('click', () => {
+      input.value = Math.round(parseFloat(slider.value) * 1000);
+      span.style.display = 'none';
+      input.style.display = 'inline-block';
+      input.focus();
+      input.select();
+    });
+
+    function commit() {
+      let m = parseFloat(input.value);
+      if (isNaN(m) || m < 10)  m = 10;
+      if (m > 5000) m = 5000;
+      m = Math.round(m / 10) * 10;
+      const km = m / 1000;
+      slider.value = km;
+      span.textContent = _formatRadius(km);
+      span.style.display = '';
+      input.style.display = 'none';
+      slider.dispatchEvent(new Event('input'));
+    }
+
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+      if (e.key === 'Escape') { span.style.display = ''; input.style.display = 'none'; }
+    });
+  }
+
+  function applyPrivacyZone(xmlText) {
+    const zones = getPrivacyZones();
+    if (!zones.length) return { text: xmlText, removed: 0 };
+
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    if (doc.querySelector('parsererror')) return { text: xmlText, removed: 0 };
+
+    const ns = 'http://www.topografix.com/GPX/1/1';
+    let els = Array.from(doc.getElementsByTagNameNS(ns, 'trkpt'));
+    if (!els.length) els = Array.from(doc.getElementsByTagName('trkpt'));
+
+    let removed = 0;
+    for (const el of els) {
+      const lat = parseFloat(el.getAttribute('lat'));
+      const lon = parseFloat(el.getAttribute('lon'));
+      if (!isNaN(lat) && !isNaN(lon) &&
+          zones.some(z => privacyHaversineKm(z.lat, z.lon, lat, lon) <= (z.radius || PRIVACY_RADIUS_DEFAULT))) {
+        el.parentNode.removeChild(el);
+        removed++;
+      }
+    }
+
+    if (!removed) return { text: xmlText, removed: 0 };
+    return { text: new XMLSerializer().serializeToString(doc), removed };
+  }
+
+  // ── Privacy modal ──
+
+  function openPrivacyModal() {
+    privacyPending = null;
+    document.getElementById('privacy-error').textContent = '';
+    document.getElementById('privacy-address-input').value = '';
+    _hidePendingZone();
+    renderPrivacyZonesList();
+    document.getElementById('privacy-modal').style.display = 'flex';
+    setTimeout(() => document.getElementById('privacy-address-input').focus(), 50);
+  }
+
+  function closePrivacyModal() {
+    document.getElementById('privacy-modal').style.display = 'none';
+    privacyPending = null;
+  }
+
+  function renderPrivacyZonesList() {
+    const zones = getPrivacyZones();
+    const list  = document.getElementById('privacy-zones-list');
+    if (!zones.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No zones added yet.</p>';
+      return;
+    }
+    list.innerHTML = zones.map(z => {
+      const label  = z.name ? z.name.split(',')[0] : `${z.lat.toFixed(4)}, ${z.lon.toFixed(4)}`;
+      const radius = _formatRadius(z.radius || PRIVACY_RADIUS_DEFAULT);
+      return `<div class="privacy-zone-item">
+        <span class="privacy-zone-icon">📍</span>
+        <span class="privacy-zone-name" title="${z.name || ''}">${label}</span>
+        <span class="privacy-zone-radius">${radius}</span>
+        <button class="privacy-zone-edit" data-id="${z.id}" title="Edit zone">✎</button>
+        <button class="privacy-zone-remove" data-id="${z.id}" title="Remove zone">✕</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.privacy-zone-remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const updated = removePrivacyZone(Number(e.currentTarget.dataset.id));
+        renderPrivacyZonesList();
+        MapManager.updatePrivacyZones(updated);
+      });
+    });
+    list.querySelectorAll('.privacy-zone-edit').forEach(btn => {
+      btn.addEventListener('click', e => {
+        const zone = getPrivacyZones().find(z => z.id === Number(e.currentTarget.dataset.id));
+        if (zone) openMapPickerForEdit(zone);
+      });
+    });
+  }
+
+  function _showPendingZone() {
+    const nameEl  = document.getElementById('privacy-pending-name');
+    const slider  = document.getElementById('privacy-radius-slider');
+    const valEl   = document.getElementById('privacy-radius-value');
+    const label   = privacyPending.name
+      || `${privacyPending.lat.toFixed(5)}, ${privacyPending.lon.toFixed(5)}`;
+    nameEl.textContent = label;
+    slider.value = privacyPending.radius || PRIVACY_RADIUS_DEFAULT;
+    valEl.textContent = _formatRadius(parseFloat(slider.value));
+    document.getElementById('privacy-pending').style.display = 'flex';
+  }
+
+  function _hidePendingZone() {
+    document.getElementById('privacy-pending').style.display = 'none';
+    privacyPending = null;
+  }
+
+  function handlePrivacyAddZone() {
+    if (!privacyPending) return;
+    privacyPending.radius = parseFloat(document.getElementById('privacy-radius-slider').value);
+    const updated = addPrivacyZone(privacyPending);
+    MapManager.updatePrivacyZones(updated);
+    renderPrivacyZonesList();
+    _hidePendingZone();
+    document.getElementById('privacy-address-input').value = '';
+    document.getElementById('privacy-error').textContent = '';
+  }
+
+  async function handlePrivacySearch() {
+    const query = document.getElementById('privacy-address-input').value.trim();
+    const errEl = document.getElementById('privacy-error');
+    const btn   = document.getElementById('privacy-search-btn');
+    if (!query) return;
+    errEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const resp = await fetch(
+        'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query)
+        + '&format=json&limit=1',
+        { headers: { 'Accept-Language': navigator.language || 'en' } }
+      );
+      if (!resp.ok) throw new Error('Geocoding service unavailable.');
+      const data = await resp.json();
+      if (!data.length) throw new Error('Address not found. Try a more specific search.');
+      privacyPending = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), name: data[0].display_name, radius: PRIVACY_RADIUS_DEFAULT };
+      _showPendingZone();
+    } catch (err) {
+      errEl.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Search';
+    }
+  }
+
+  function handlePrivacyDetect() {
+    const errEl = document.getElementById('privacy-error');
+    if (!navigator.geolocation) { errEl.textContent = 'Geolocation not supported by your browser.'; return; }
+    const btn = document.getElementById('privacy-detect-btn');
+    btn.disabled = true;
+    btn.textContent = 'Detecting…';
+    errEl.textContent = '';
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        let name = null;
+        try {
+          const r = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+            { headers: { 'Accept-Language': navigator.language || 'en' } }
+          );
+          if (r.ok) name = (await r.json()).display_name || null;
+        } catch (_) {}
+        privacyPending = { lat, lon, name: name || `${lat.toFixed(5)}, ${lon.toFixed(5)}`, radius: PRIVACY_RADIUS_DEFAULT };
+        _showPendingZone();
+        btn.textContent = 'Use my location';
+        btn.disabled = false;
+      },
+      () => {
+        errEl.textContent = 'Could not detect location. Try searching or picking on the map.';
+        btn.textContent = 'Use my location';
+        btn.disabled = false;
+      }
+    );
+  }
+
+  // ── Map picker ──
+
+  function openMapPicker() {
+    editingZoneId = null;
+    pickerSelected = null;
+    document.getElementById('privacy-picker-coords').textContent = '';
+    document.getElementById('privacy-picker-confirm').disabled = true;
+
+    const initRadius = privacyPending?.radius || PRIVACY_RADIUS_DEFAULT;
+    const pickerSlider = document.getElementById('privacy-picker-radius');
+    const pickerValEl  = document.getElementById('privacy-picker-radius-value');
+    pickerSlider.value = initRadius;
+    pickerValEl.textContent = _formatRadius(initRadius);
+
+    document.getElementById('privacy-picker-overlay').style.display = 'flex';
+
+    const mapEl = document.getElementById('privacy-picker-map');
+    pickerMap = L.map(mapEl, { zoomControl: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd', maxZoom: 20,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(pickerMap);
+
+    for (const z of getPrivacyZones()) {
+      L.circle([z.lat, z.lon], {
+        radius: (z.radius || PRIVACY_RADIUS_DEFAULT) * 1000,
+        color: '#f59e0b', fillColor: '#f59e0b',
+        fillOpacity: 0.12, weight: 2, dashArray: '6 4', interactive: false,
+      }).addTo(pickerMap);
+    }
+
+    const initialZones = getPrivacyZones();
+    if (initialZones.length) {
+      const last = initialZones[initialZones.length - 1];
+      pickerMap.setView([last.lat, last.lon], 12);
+    } else {
+      pickerMap.setView([20, 0], 2);
+    }
+
+    pickerMap.on('click', e => {
+      pickerSelected = { lat: e.latlng.lat, lon: e.latlng.lng };
+      _addPickerMarker(pickerSelected.lat, pickerSelected.lon);
+      document.getElementById('privacy-picker-confirm').disabled = false;
+    });
+  }
+
+  function _addPickerMarker(lat, lon) {
+    const km = parseFloat(document.getElementById('privacy-picker-radius').value);
+    if (pickerMarker) pickerMap.removeLayer(pickerMarker);
+    if (pickerCircle) pickerMap.removeLayer(pickerCircle);
+    pickerMarker = L.marker([lat, lon], { draggable: true }).addTo(pickerMap);
+    pickerCircle = L.circle([lat, lon], {
+      radius: km * 1000, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.22, weight: 2,
+    }).addTo(pickerMap);
+    pickerMarker.on('drag', e => {
+      const { lat: mlat, lng: mlng } = e.latlng;
+      pickerSelected = { lat: mlat, lon: mlng };
+      pickerCircle.setLatLng([mlat, mlng]);
+      document.getElementById('privacy-picker-coords').textContent = mlat.toFixed(5) + ', ' + mlng.toFixed(5);
+    });
+    document.getElementById('privacy-picker-coords').textContent = lat.toFixed(5) + ', ' + lon.toFixed(5);
+  }
+
+  function closeMapPicker() {
+    editingZoneId = null;
+    if (pickerMap) { pickerMap.remove(); pickerMap = null; pickerMarker = null; pickerCircle = null; }
+    pickerSelected = null;
+    document.getElementById('privacy-picker-overlay').style.display = 'none';
+    document.getElementById('privacy-picker-confirm').disabled = true;
+    document.getElementById('privacy-picker-confirm').textContent = 'Confirm';
+    document.getElementById('privacy-picker-hint').textContent = 'Click anywhere on the map to place a zone';
+    document.getElementById('privacy-picker-search-row').style.display = 'none';
+    document.getElementById('privacy-picker-address').value = '';
+  }
+
+  function openMapPickerForEdit(zone) {
+    editingZoneId  = zone.id;
+    pickerSelected = { lat: zone.lat, lon: zone.lon };
+
+    const initRadius  = zone.radius || PRIVACY_RADIUS_DEFAULT;
+    const pickerSlider = document.getElementById('privacy-picker-radius');
+    const pickerValEl  = document.getElementById('privacy-picker-radius-value');
+    pickerSlider.value = initRadius;
+    pickerValEl.textContent = _formatRadius(initRadius);
+
+    document.getElementById('privacy-picker-coords').textContent = zone.lat.toFixed(5) + ', ' + zone.lon.toFixed(5);
+    document.getElementById('privacy-picker-confirm').disabled = false;
+    document.getElementById('privacy-picker-confirm').textContent = 'Save changes';
+    document.getElementById('privacy-picker-hint').textContent = 'Drag the marker or click to relocate. Adjust the radius below.';
+    document.getElementById('privacy-picker-search-row').style.display = 'flex';
+
+    document.getElementById('privacy-picker-overlay').style.display = 'flex';
+
+    const mapEl = document.getElementById('privacy-picker-map');
+    pickerMap = L.map(mapEl, { zoomControl: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd', maxZoom: 20,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(pickerMap);
+
+    for (const z of getPrivacyZones().filter(z => z.id !== zone.id)) {
+      L.circle([z.lat, z.lon], {
+        radius: (z.radius || PRIVACY_RADIUS_DEFAULT) * 1000,
+        color: '#f59e0b', fillColor: '#f59e0b',
+        fillOpacity: 0.12, weight: 2, dashArray: '6 4', interactive: false,
+      }).addTo(pickerMap);
+    }
+
+    pickerCircle = L.circle([zone.lat, zone.lon], {
+      radius: initRadius * 1000, color: '#f59e0b', fillColor: '#f59e0b', fillOpacity: 0.22, weight: 2,
+    }).addTo(pickerMap);
+    pickerMarker = L.marker([zone.lat, zone.lon], { draggable: true }).addTo(pickerMap);
+    pickerMarker.on('drag', e => {
+      const { lat, lng } = e.latlng;
+      pickerSelected = { lat, lon: lng };
+      pickerCircle.setLatLng([lat, lng]);
+      document.getElementById('privacy-picker-coords').textContent = lat.toFixed(5) + ', ' + lng.toFixed(5);
+    });
+
+    pickerMap.setView([zone.lat, zone.lon], 14);
+    pickerMap.on('click', e => {
+      pickerSelected = { lat: e.latlng.lat, lon: e.latlng.lng };
+      _addPickerMarker(pickerSelected.lat, pickerSelected.lon);
+      document.getElementById('privacy-picker-confirm').disabled = false;
+    });
+  }
+
+  async function handlePickerSearch() {
+    const query = document.getElementById('privacy-picker-address').value.trim();
+    const btn   = document.getElementById('privacy-picker-search-btn');
+    const coord = document.getElementById('privacy-picker-coords');
+    if (!query || !pickerMap) return;
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const resp = await fetch(
+        'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query)
+        + '&format=json&limit=1',
+        { headers: { 'Accept-Language': navigator.language || 'en' } }
+      );
+      if (!resp.ok) throw new Error('Geocoding service unavailable.');
+      const data = await resp.json();
+      if (!data.length) throw new Error('Address not found.');
+      const lat = parseFloat(data[0].lat);
+      const lon = parseFloat(data[0].lon);
+      pickerSelected = { lat, lon };
+      _addPickerMarker(lat, lon);
+      pickerMap.setView([lat, lon], 14);
+      document.getElementById('privacy-picker-confirm').disabled = false;
+    } catch (err) {
+      coord.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Go';
+    }
+  }
+
+  async function confirmMapPicker() {
+    if (!pickerSelected) return;
+    const btn = document.getElementById('privacy-picker-confirm');
+    btn.disabled = true;
+    btn.textContent = '…';
+    let name = null;
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${pickerSelected.lat}&lon=${pickerSelected.lon}&format=json`,
+        { headers: { 'Accept-Language': navigator.language || 'en' } }
+      );
+      if (r.ok) name = (await r.json()).display_name || null;
+    } catch (_) {}
+    const radius       = parseFloat(document.getElementById('privacy-picker-radius').value);
+    const resolvedName = name || `${pickerSelected.lat.toFixed(5)}, ${pickerSelected.lon.toFixed(5)}`;
+
+    if (editingZoneId !== null) {
+      const updated = updatePrivacyZone(editingZoneId, {
+        lat: pickerSelected.lat, lon: pickerSelected.lon,
+        name: resolvedName, radius,
+      });
+      closeMapPicker();
+      renderPrivacyZonesList();
+      MapManager.updatePrivacyZones(updated);
+    } else {
+      privacyPending = {
+        lat: pickerSelected.lat, lon: pickerSelected.lon,
+        name: resolvedName, radius,
+      };
+      closeMapPicker();
+      _showPendingZone();
+    }
+  }
+
   // ── Share via GitHub Gist ─────────────────────────────────────────────────────
 
   const PAT_KEY = 'gpxlib-gist-token';
@@ -1734,29 +2175,259 @@
     URL.revokeObjectURL(url);
   }
 
+  // ── Share trim picker ────────────────────────────────────────────────────────
+
+  let trimMap           = null;
+  let trimStartMarker   = null;
+  let trimEndMarker     = null;
+  let trimGrayStart     = null;
+  let trimGrayEnd       = null;
+  let trimActiveLine    = null;
+  let trimTrackPoints   = [];
+  let trimStartIdx      = 0;
+  let trimEndIdx        = 0;
+  let trimPickerMode    = 'share'; // 'share' | 'edit'
+
+  function parseTrackPoints(xmlText) {
+    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    const ns  = 'http://www.topografix.com/GPX/1/1';
+    let els   = Array.from(doc.getElementsByTagNameNS(ns, 'trkpt'));
+    if (!els.length) els = Array.from(doc.getElementsByTagName('trkpt'));
+    return els.map(el => ({
+      lat: parseFloat(el.getAttribute('lat')),
+      lon: parseFloat(el.getAttribute('lon')),
+    })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+  }
+
+  function _isInAnyZone(lat, lon, zones) {
+    return zones.some(z => privacyHaversineKm(z.lat, z.lon, lat, lon) <= (z.radius || PRIVACY_RADIUS_DEFAULT));
+  }
+
+  function _findTrimPoints(trackPoints, zones) {
+    let startIdx = 0;
+    for (let i = 0; i < trackPoints.length; i++) {
+      if (!_isInAnyZone(trackPoints[i].lat, trackPoints[i].lon, zones)) { startIdx = i; break; }
+      if (i === trackPoints.length - 1) startIdx = 0;
+    }
+    let endIdx = trackPoints.length - 1;
+    for (let i = trackPoints.length - 1; i >= 0; i--) {
+      if (!_isInAnyZone(trackPoints[i].lat, trackPoints[i].lon, zones)) { endIdx = i; break; }
+      if (i === 0) endIdx = trackPoints.length - 1;
+    }
+    return { startIdx, endIdx };
+  }
+
+  function _nearestTrackIdx(lat, lon, minIdx, maxIdx) {
+    let best = minIdx, bestDist = Infinity;
+    for (let i = minIdx; i <= maxIdx; i++) {
+      const d = privacyHaversineKm(lat, lon, trimTrackPoints[i].lat, trimTrackPoints[i].lon);
+      if (d < bestDist) { bestDist = d; best = i; }
+    }
+    return best;
+  }
+
+  function _updateTrimVisualization() {
+    const n   = trimTrackPoints.length;
+    const pts = p => [p.lat, p.lon];
+
+    trimGrayStart .setLatLngs(trimStartIdx > 0      ? trimTrackPoints.slice(0, trimStartIdx + 1).map(pts) : []);
+    trimActiveLine.setLatLngs(trimTrackPoints.slice(trimStartIdx, trimEndIdx + 1).map(pts));
+    trimGrayEnd   .setLatLngs(trimEndIdx < n - 1    ? trimTrackPoints.slice(trimEndIdx).map(pts) : []);
+
+    trimStartMarker.setLatLng([trimTrackPoints[trimStartIdx].lat, trimTrackPoints[trimStartIdx].lon]);
+    trimEndMarker  .setLatLng([trimTrackPoints[trimEndIdx  ].lat, trimTrackPoints[trimEndIdx  ].lon]);
+
+    const removed  = trimStartIdx + (n - 1 - trimEndIdx);
+    const infoEl   = document.getElementById('share-trim-info');
+    if (removed > 0) {
+      infoEl.textContent = trimPickerMode === 'edit'
+        ? `Trimming ${removed.toLocaleString()} point${removed === 1 ? '' : 's'}`
+        : `Hiding ${removed.toLocaleString()} point${removed === 1 ? '' : 's'} near privacy zones`;
+      infoEl.style.display = '';
+    } else {
+      infoEl.textContent = '';
+      infoEl.style.display = 'none';
+    }
+  }
+
+  function trimGpxToRange(xmlText, startIdx, endIdx) {
+    const doc  = new DOMParser().parseFromString(xmlText, 'application/xml');
+    const ns   = 'http://www.topografix.com/GPX/1/1';
+    let els    = Array.from(doc.getElementsByTagNameNS(ns, 'trkpt'));
+    if (!els.length) els = Array.from(doc.getElementsByTagName('trkpt'));
+    els.forEach((el, i) => { if (i < startIdx || i > endIdx) el.parentNode.removeChild(el); });
+    return new XMLSerializer().serializeToString(doc);
+  }
+
+  function openShareTrimPicker(trackPoints, startIdx, endIdx, mode = 'share') {
+    trimPickerMode  = mode;
+    trimTrackPoints = trackPoints;
+    trimStartIdx    = startIdx;
+    trimEndIdx      = endIdx;
+
+    const isEdit = mode === 'edit';
+    document.querySelector('.share-trim-title').textContent =
+      isEdit ? 'Edit start/end points' : 'Choose what to share';
+    document.getElementById('share-trim-confirm').textContent =
+      isEdit ? 'Apply trim' : 'Share trimmed';
+    document.getElementById('share-trim-full').style.display =
+      isEdit ? 'none' : '';
+    document.getElementById('share-trim-info').style.display = 'none';
+
+    document.getElementById('share-trim-overlay').style.display = 'flex';
+
+    const mapEl = document.getElementById('share-trim-map');
+    trimMap = L.map(mapEl, { zoomControl: true });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd', maxZoom: 20,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    }).addTo(trimMap);
+
+    for (const z of getPrivacyZones()) {
+      L.circle([z.lat, z.lon], {
+        radius: (z.radius || PRIVACY_RADIUS_DEFAULT) * 1000,
+        color: '#f59e0b', fillColor: '#f59e0b',
+        fillOpacity: 0.12, weight: 2, dashArray: '6 4', interactive: false,
+      }).addTo(trimMap);
+    }
+
+    trimGrayStart  = L.polyline([], { color: '#94a3b8', weight: 3, opacity: 0.45 }).addTo(trimMap);
+    trimGrayEnd    = L.polyline([], { color: '#94a3b8', weight: 3, opacity: 0.45 }).addTo(trimMap);
+    trimActiveLine = L.polyline([], { color: '#3b82f6', weight: 3 }).addTo(trimMap);
+
+    const startIcon = L.divIcon({
+      className: '', iconSize: [18, 18], iconAnchor: [9, 9],
+      html: '<div class="trim-marker trim-marker-start"></div>',
+    });
+    const endIcon = L.divIcon({
+      className: '', iconSize: [18, 18], iconAnchor: [9, 9],
+      html: '<div class="trim-marker trim-marker-end"></div>',
+    });
+
+    trimStartMarker = L.marker([trackPoints[startIdx].lat, trackPoints[startIdx].lon], {
+      icon: startIcon, draggable: true,
+    }).addTo(trimMap);
+    trimEndMarker = L.marker([trackPoints[endIdx].lat, trackPoints[endIdx].lon], {
+      icon: endIcon, draggable: true,
+    }).addTo(trimMap);
+
+    trimStartMarker.on('dragend', e => {
+      const { lat, lng } = e.target.getLatLng();
+      trimStartIdx = _nearestTrackIdx(lat, lng, 0, Math.max(0, trimEndIdx - 1));
+      _updateTrimVisualization();
+    });
+    trimEndMarker.on('dragend', e => {
+      const { lat, lng } = e.target.getLatLng();
+      trimEndIdx = _nearestTrackIdx(lat, lng, Math.min(trimTrackPoints.length - 1, trimStartIdx + 1), trimTrackPoints.length - 1);
+      _updateTrimVisualization();
+    });
+
+    _updateTrimVisualization();
+
+    const allCoords = trackPoints.map(p => [p.lat, p.lon]);
+    trimMap.fitBounds(L.latLngBounds(allCoords), { padding: [30, 30] });
+  }
+
+  function closeShareTrimPicker() {
+    if (trimMap) { trimMap.remove(); trimMap = null; }
+    trimStartMarker = null; trimEndMarker = null;
+    trimGrayStart = null; trimGrayEnd = null; trimActiveLine = null;
+    trimTrackPoints = []; trimStartIdx = 0; trimEndIdx = 0;
+    document.getElementById('share-trim-overlay').style.display = 'none';
+  }
+
+  async function confirmShareTrim() {
+    const trimmed = trimGpxToRange(currentGpxText, trimStartIdx, trimEndIdx);
+    closeShareTrimPicker();
+    if (trimPickerMode === 'edit') {
+      await applyRouteTrim(trimmed);
+    } else {
+      await doShare(trimmed);
+    }
+  }
+
+  async function applyRouteTrim(trimmedGpxText) {
+    const route = savedRoutes.find(r => r.id === activeRouteId)
+                || uploadedRoutes.find(r => r.id === activeRouteId);
+    if (!route) return;
+
+    route.gpxText  = trimmedGpxText;
+    route._parsed  = null;
+    currentGpxText = trimmedGpxText;
+
+    if (route.source === 'saved') {
+      try {
+        await Storage.saveRoute({ ...route });
+        const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
+        if (idx >= 0) savedRoutes[idx] = route;
+        refreshLibraryDate();
+      } catch (err) {
+        showShareToast('Could not save: ' + err.message);
+        return;
+      }
+    } else {
+      const idx = uploadedRoutes.findIndex(r => r.id === activeRouteId);
+      if (idx >= 0) uploadedRoutes[idx] = route;
+    }
+
+    const parsed   = GPXParser.parse(trimmedGpxText);
+    currentPoints  = parsed.points;
+    renderStats(parsed.metadata, parsed.stats);
+    MapManager.showRoute(parsed.points, parsed.stats);
+
+    backupNeeded = true;
+    scheduleBackup();
+    showShareToast('Route trimmed.');
+  }
+
+  function openTrimPickerForEdit() {
+    if (!currentGpxText) return;
+    const trackPoints = parseTrackPoints(currentGpxText);
+    if (!trackPoints.length) return;
+    openShareTrimPicker(trackPoints, 0, trackPoints.length - 1, 'edit');
+  }
+
   async function shareRoute() {
     if (!currentGpxText) return;
     if (!getPat()) { openPatModal(); return; }
-    await doShare();
+
+    const zones = getPrivacyZones();
+    if (zones.length > 0) {
+      const trackPoints = parseTrackPoints(currentGpxText);
+      if (trackPoints.length > 0) {
+        const { startIdx, endIdx } = _findTrimPoints(trackPoints, zones);
+        if (startIdx > 0 || endIdx < trackPoints.length - 1) {
+          openShareTrimPicker(trackPoints, startIdx, endIdx);
+          return;
+        }
+      }
+    }
+    await doShare(currentGpxText);
   }
 
-  async function doShare() {
+  async function doShare(gpxSource) {
     const btn   = document.getElementById('btn-share-route');
     const label = document.getElementById('btn-share-label');
     btn.disabled = true;
     label.textContent = 'Sharing…';
 
     try {
-      const origCount    = (currentGpxText.match(/<trkpt/g) || []).length;
-      const gpxToShare   = simplifyGpxForSharing(currentGpxText);
-      const newCount     = (gpxToShare.match(/<trkpt/g) || []).length;
-      const simplifyInfo = origCount !== newCount
-        ? `Track simplified from ${origCount.toLocaleString()} to ${newCount.toLocaleString()} points for sharing.`
-        : null;
+      const origCount   = (currentGpxText.match(/<trkpt/g) || []).length;
+      const sourceCount = (gpxSource.match(/<trkpt/g) || []).length;
+      const gpxToShare  = simplifyGpxForSharing(gpxSource);
+      const finalCount  = (gpxToShare.match(/<trkpt/g) || []).length;
+      const privRemoved = origCount - sourceCount;
 
-      const routeName      = document.getElementById('route-name').textContent || 'Shared Route';
-      const { id }         = await createGist(gpxToShare, routeName);
-      const shareUrl       = window.location.origin + window.location.pathname + '?gist=' + id;
+      const msgs = [];
+      if (privRemoved > 0)
+        msgs.push(`${privRemoved} point${privRemoved === 1 ? '' : 's'} removed near privacy zones.`);
+      if (sourceCount !== finalCount)
+        msgs.push(`Track simplified from ${sourceCount.toLocaleString()} to ${finalCount.toLocaleString()} points for sharing.`);
+      const simplifyInfo = msgs.length ? msgs.join(' ') : null;
+
+      const routeName = document.getElementById('route-name').textContent || 'Shared Route';
+      const { id }    = await createGist(gpxToShare, routeName);
+      const shareUrl  = window.location.origin + window.location.pathname + '?gist=' + id;
 
       openShareModal(shareUrl, simplifyInfo);
 
@@ -1807,7 +2478,7 @@
       await validatePat(pat);
       setPat(pat);
       closePatModal();
-      doShare();
+      shareRoute();
     } catch (err) {
       errEl.textContent = err.message;
       saveBtn.disabled = false;
@@ -1856,7 +2527,8 @@
 
     try {
       const routeName  = document.getElementById('route-name').textContent || 'GPX Route';
-      const { id }     = await createGist(currentGpxText, routeName);
+      const { text: gpxForGps } = applyPrivacyZone(currentGpxText);
+      const { id }     = await createGist(gpxForGps, routeName);
       const qrTarget   = window.location.origin + window.location.pathname + '?gpx-send=' + id;
 
       new QRCode(qrEl, {
@@ -3553,6 +4225,50 @@
       else
         backupErr.textContent = '';
     });
+
+    // Privacy zones modal
+    document.getElementById('privacy-modal-close').addEventListener('click', closePrivacyModal);
+    document.getElementById('privacy-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closePrivacyModal();
+    });
+    document.getElementById('privacy-search-btn').addEventListener('click', handlePrivacySearch);
+    document.getElementById('privacy-address-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handlePrivacySearch();
+    });
+    document.getElementById('privacy-detect-btn').addEventListener('click', handlePrivacyDetect);
+    document.getElementById('privacy-pick-btn').addEventListener('click', openMapPicker);
+    document.getElementById('privacy-add-btn').addEventListener('click', handlePrivacyAddZone);
+    document.getElementById('privacy-radius-slider').addEventListener('input', e => {
+      const km = parseFloat(e.target.value);
+      document.getElementById('privacy-radius-value').textContent = _formatRadius(km);
+      if (privacyPending) privacyPending.radius = km;
+    });
+    document.getElementById('privacy-picker-radius').addEventListener('input', e => {
+      const km = parseFloat(e.target.value);
+      document.getElementById('privacy-picker-radius-value').textContent = _formatRadius(km);
+      if (pickerCircle) pickerCircle.setRadius(km * 1000);
+    });
+    _initRadiusEditor('privacy-radius-slider',  'privacy-radius-value',        'privacy-radius-input');
+    _initRadiusEditor('privacy-picker-radius',  'privacy-picker-radius-value', 'privacy-picker-radius-input');
+
+    // Map picker
+    document.getElementById('privacy-picker-cancel').addEventListener('click', closeMapPicker);
+    document.getElementById('privacy-picker-confirm').addEventListener('click', confirmMapPicker);
+    document.getElementById('privacy-picker-search-btn').addEventListener('click', handlePickerSearch);
+    document.getElementById('privacy-picker-address').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handlePickerSearch();
+    });
+
+    // Share trim picker
+    document.getElementById('share-trim-cancel') .addEventListener('click', closeShareTrimPicker);
+    document.getElementById('share-trim-full')   .addEventListener('click', () => { closeShareTrimPicker(); doShare(currentGpxText); });
+    document.getElementById('share-trim-confirm').addEventListener('click', confirmShareTrim);
+
+    // Trim route button (edit start/end points)
+    document.getElementById('btn-trim-route').addEventListener('click', openTrimPickerForEdit);
+
+    // Initialise privacy zone circles on the map
+    MapManager.updatePrivacyZones(getPrivacyZones());
 
     // Shared-route expiration banner
     document.getElementById('banner-save-btn').addEventListener('click', async () => {
