@@ -1825,13 +1825,15 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       return;
     }
     list.innerHTML = zones.map(z => {
-      const label  = z.name ? z.name.split(',')[0] : `${z.lat.toFixed(4)}, ${z.lon.toFixed(4)}`;
-      const radius = _formatRadius(z.radius || PRIVACY_RADIUS_DEFAULT);
+      const addrLabel  = z.name ? z.name.split(',')[0] : `${z.lat.toFixed(4)}, ${z.lon.toFixed(4)}`;
+      const label      = z.alias || addrLabel;
+      const titleAttr  = z.alias ? z.name || '' : 'Click to add a label';
+      const radius     = _formatRadius(z.radius || PRIVACY_RADIUS_DEFAULT);
       return `<div class="privacy-zone-item">
         <span class="privacy-zone-icon">📍</span>
-        <span class="privacy-zone-name" title="${z.name || ''}">${label}</span>
+        <span class="privacy-zone-name privacy-zone-name-editable" data-id="${z.id}" title="${titleAttr}">${label}</span>
         <span class="privacy-zone-radius">${radius}</span>
-        <button class="privacy-zone-edit" data-id="${z.id}" title="Edit zone">✎</button>
+        <button class="privacy-zone-edit" data-id="${z.id}" title="Edit location/radius">✎</button>
         <button class="privacy-zone-remove" data-id="${z.id}" title="Remove zone">✕</button>
       </div>`;
     }).join('');
@@ -1848,28 +1850,60 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         if (zone) openMapPickerForEdit(zone);
       });
     });
+    list.querySelectorAll('.privacy-zone-name-editable').forEach(span => {
+      span.addEventListener('click', () => {
+        const id   = Number(span.dataset.id);
+        const zone = getPrivacyZones().find(z => z.id === id);
+        if (!zone) return;
+        const input = document.createElement('input');
+        input.type  = 'text';
+        input.value = zone.alias || '';
+        input.placeholder = zone.name ? zone.name.split(',')[0] : 'Add a label…';
+        input.className   = 'privacy-alias-edit-input';
+        span.replaceWith(input);
+        input.focus();
+        input.select();
+        const commit = () => {
+          const alias   = input.value.trim() || null;
+          const updated = updatePrivacyZone(id, { alias });
+          MapManager.updatePrivacyZones(updated);
+          renderPrivacyZonesList();
+        };
+        input.addEventListener('blur', commit);
+        input.addEventListener('keydown', e => {
+          if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+          if (e.key === 'Escape') { renderPrivacyZonesList(); }
+        });
+      });
+    });
   }
 
   function _showPendingZone() {
     const nameEl  = document.getElementById('privacy-pending-name');
     const slider  = document.getElementById('privacy-radius-slider');
     const valEl   = document.getElementById('privacy-radius-value');
+    const aliasEl = document.getElementById('privacy-alias-input');
     const label   = privacyPending.name
       || `${privacyPending.lat.toFixed(5)}, ${privacyPending.lon.toFixed(5)}`;
     nameEl.textContent = label;
     slider.value = privacyPending.radius || PRIVACY_RADIUS_DEFAULT;
     valEl.textContent = _formatRadius(parseFloat(slider.value));
+    if (aliasEl) aliasEl.value = privacyPending.alias || '';
     document.getElementById('privacy-pending').style.display = 'flex';
   }
 
   function _hidePendingZone() {
     document.getElementById('privacy-pending').style.display = 'none';
+    const aliasEl = document.getElementById('privacy-alias-input');
+    if (aliasEl) aliasEl.value = '';
     privacyPending = null;
   }
 
   function handlePrivacyAddZone() {
     if (!privacyPending) return;
     privacyPending.radius = parseFloat(document.getElementById('privacy-radius-slider').value);
+    const aliasEl = document.getElementById('privacy-alias-input');
+    privacyPending.alias = aliasEl ? (aliasEl.value.trim() || null) : null;
     const updated = addPrivacyZone(privacyPending);
     MapManager.updatePrivacyZones(updated);
     renderPrivacyZonesList();

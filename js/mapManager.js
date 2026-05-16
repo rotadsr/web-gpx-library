@@ -177,7 +177,7 @@ const MapManager = (() => {
         dashArray: '6 4',
         interactive: false,
       }).addTo(map);
-      const label = zone.name ? zone.name.split(',')[0] : null;
+      const label = zone.alias || (zone.name ? zone.name.split(',')[0] : null);
       if (label) circle.bindTooltip(label, { sticky: true, className: 'privacy-zone-tip' });
       privacyZoneLayers.push(circle);
     }
