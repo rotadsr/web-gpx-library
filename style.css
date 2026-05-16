@@ -1622,6 +1622,25 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 .share-copy-btn:hover       { background: var(--primary-dark); }
 .share-copy-btn.copied      { background: var(--green); }
 .share-copy-btn:disabled    { opacity: 0.6; cursor: default; }
+.share-qr-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.share-qr-section #share-qr img,
+.share-qr-section #share-qr canvas {
+  border-radius: 6px;
+  display: block;
+}
+.share-qr-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+}
 .share-dialog-footer {
   margin-top: 12px;
   display: flex;
