@@ -2041,6 +2041,7 @@
 
   function openBackupModal() {
     document.getElementById('backup-repo-input').value = getBackupRepo();
+    document.getElementById('backup-pat-input').value  = getPat() || '';
     document.getElementById('backup-error').textContent = '';
     const saveBtn = document.getElementById('backup-save-btn');
     saveBtn.disabled = false;
@@ -2054,10 +2055,12 @@
   }
 
   async function handleBackupSave() {
-    const input   = document.getElementById('backup-repo-input');
-    const errEl   = document.getElementById('backup-error');
-    const saveBtn = document.getElementById('backup-save-btn');
-    const repo    = input.value.trim();
+    const input    = document.getElementById('backup-repo-input');
+    const patInput = document.getElementById('backup-pat-input');
+    const errEl    = document.getElementById('backup-error');
+    const saveBtn  = document.getElementById('backup-save-btn');
+    const repo     = input.value.trim();
+    const pat      = patInput.value.trim() || getPat();
 
     if (!repo) {
       setBackupRepo('');
@@ -2067,14 +2070,20 @@
       return;
     }
 
-    if (!/^[^/\s]+\/[^/\s]+$/.test(repo)) {
+    if (!/^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}\/[a-zA-Z0-9._-]+$/.test(repo)) {
       errEl.textContent = 'Use the format: username/repo-name';
       return;
     }
 
-    const pat = getPat();
     if (!pat) {
-      errEl.textContent = 'A GitHub token is required. Share a route first to set up your token, then come back here.';
+      errEl.textContent = 'A GitHub token is required.';
+      patInput.focus();
+      return;
+    }
+
+    if (!/^(ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}|ghs_[A-Za-z0-9._]{36,}|ghu_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{72})$/.test(pat)) {
+      errEl.textContent = 'Invalid token format (expected ghp_…, github_pat_…, ghs_…, ghu_…, or ghr_…)';
+      patInput.focus();
       return;
     }
 
@@ -2098,6 +2107,7 @@
       if (repoResp.status === 404) throw new Error('Repository not found. Make sure it exists and your token can access it.');
       if (!repoResp.ok) throw new Error('Could not access repository (' + repoResp.status + ')');
 
+      setPat(pat);
       setBackupRepo(repo);
       closeBackupModal();
       scheduleBackup();
@@ -3375,6 +3385,25 @@
     document.getElementById('backup-save-btn').addEventListener('click', handleBackupSave);
     document.getElementById('backup-repo-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') handleBackupSave();
+    });
+
+    const REPO_RE  = /^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}\/[a-zA-Z0-9._-]+$/;
+    const TOKEN_RE = /^(ghp_[a-zA-Z0-9]{36}|github_pat_[a-zA-Z0-9]{22}_[a-zA-Z0-9]{59}|ghs_[A-Za-z0-9._]{36,}|ghu_[a-zA-Z0-9]{36}|ghr_[a-zA-Z0-9]{72})$/;
+    const backupErr = document.getElementById('backup-error');
+
+    document.getElementById('backup-repo-input').addEventListener('input', e => {
+      const v = e.target.value.trim();
+      if (v && !REPO_RE.test(v))
+        backupErr.textContent = 'Use the format: username/repo-name';
+      else
+        backupErr.textContent = '';
+    });
+    document.getElementById('backup-pat-input').addEventListener('input', e => {
+      const v = e.target.value.trim();
+      if (v && !TOKEN_RE.test(v))
+        backupErr.textContent = 'Invalid token format (expected ghp_…, github_pat_…, ghs_…, ghu_…, or ghr_…)';
+      else
+        backupErr.textContent = '';
     });
 
     // Shared-route expiration banner
