@@ -2106,3 +2106,59 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
     pointer-events: auto;
   }
 }
+
+/* ── GPS Send Landing Page ───────────────────────────────────────────────── */
+#gpx-send-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.gpx-send-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+}
+.gpx-send-icon {
+  font-size: 52px;
+  line-height: 1;
+}
+.gpx-send-card h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+.gpx-send-hint {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.5;
+}
+.gpx-send-open-btn {
+  width: 100%;
+  padding: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.gpx-send-open-btn:hover:not(:disabled) { background: var(--primary-dark); }
+.gpx-send-open-btn:disabled { opacity: 0.5; cursor: default; }
+.gpx-send-error {
+  font-size: 13px;
+  color: #dc2626;
+  margin: 0;
+}

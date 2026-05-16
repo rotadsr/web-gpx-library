@@ -425,6 +425,17 @@
 </div>
 
 
+<!-- ── GPS Send Landing Page ─────────────────────────────────────────────── -->
+<div id="gpx-send-screen" style="display:none" aria-live="polite">
+  <div class="gpx-send-card">
+    <div class="gpx-send-icon">🗺️</div>
+    <h2 id="gpx-send-route-name">Loading route…</h2>
+    <p class="gpx-send-hint">Tap the button below to open the GPX file in your GPS app.</p>
+    <button id="gpx-send-open-btn" class="gpx-send-open-btn" disabled>Open GPX file</button>
+    <p id="gpx-send-error" class="gpx-send-error"></p>
+  </div>
+</div>
+
 <!-- Leaflet -->
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <!-- Leaflet.heat (heatmap layer for overview mode) -->
