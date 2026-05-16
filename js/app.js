@@ -173,6 +173,7 @@
     updateBackupStatus('idle');
     refreshLibraryDate();
 
+    checkGpxSendParam();
     checkSharedGistParam();
 
     let searchDebounceTimer = null;
@@ -1854,20 +1855,19 @@
     modal.style.display = 'flex';
 
     try {
-      const routeName      = document.getElementById('route-name').textContent || 'GPX Route';
-      const { rawUrl }     = await createGist(currentGpxText, routeName);
-
-      if (!rawUrl) throw new Error('Could not get raw file URL from Gist');
+      const routeName  = document.getElementById('route-name').textContent || 'GPX Route';
+      const { id }     = await createGist(currentGpxText, routeName);
+      const qrTarget   = window.location.origin + window.location.pathname + '?gpx-send=' + id;
 
       new QRCode(qrEl, {
-        text:         rawUrl,
+        text:         qrTarget,
         width:        200,
         height:       200,
         colorDark:    '#000000',
         colorLight:   '#ffffff',
         correctLevel: QRCode.CorrectLevel.M,
       });
-      label.textContent = 'Scan with your phone — tap the file to open with your GPS app';
+      label.textContent = 'Scan with your phone, then tap "Open GPX file"';
     } catch (err) {
       if (err.message === 'token_rejected' || err.message === 'no_pat') {
         closeGpsQrModal();
@@ -1974,6 +1974,71 @@
       console.warn('Failed to load shared route:', err);
       showShareToast('Could not load shared route: ' + err.message);
     }
+  }
+
+  async function checkGpxSendParam() {
+    const gistId = new URLSearchParams(window.location.search).get('gpx-send');
+    if (!gistId || !/^[0-9a-f]{20,40}$/i.test(gistId)) return;
+
+    // Show the landing page and hide the main app
+    document.getElementById('app').style.display = 'none';
+    const screen  = document.getElementById('gpx-send-screen');
+    const nameEl  = document.getElementById('gpx-send-route-name');
+    const btn     = document.getElementById('gpx-send-open-btn');
+    const errEl   = document.getElementById('gpx-send-error');
+    screen.style.display = 'flex';
+
+    let rawUrl  = null;
+    let gpxName = 'route.gpx';
+
+    try {
+      const resp = await fetch('https://api.github.com/gists/' + gistId, {
+        headers: { Accept: 'application/vnd.github+json' },
+      });
+      if (!resp.ok) throw new Error('Could not load route (HTTP ' + resp.status + ')');
+      const data    = await resp.json();
+      const gpxFile = Object.values(data.files).find(f => f.filename.endsWith('.gpx'));
+      if (!gpxFile) throw new Error('No GPX file found in this link');
+
+      rawUrl  = gpxFile.raw_url;
+      gpxName = gpxFile.filename;
+
+      // Try to extract a human-readable name from the Gist description or filename
+      const friendlyName = data.description || gpxFile.filename.replace(/\.gpx$/i, '');
+      nameEl.textContent = friendlyName;
+      btn.disabled = false;
+    } catch (err) {
+      nameEl.textContent = 'Route';
+      errEl.textContent  = err.message;
+      return;
+    }
+
+    btn.addEventListener('click', async () => {
+      btn.disabled       = true;
+      btn.textContent    = 'Opening…';
+      errEl.textContent  = '';
+      try {
+        const gpxResp = await fetch(rawUrl);
+        if (!gpxResp.ok) throw new Error('Could not fetch GPX file (' + gpxResp.status + ')');
+        const gpxText = await gpxResp.text();
+
+        const blob = new Blob([gpxText], { type: 'application/gpx+xml' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = gpxName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        btn.textContent = 'Opened ✓';
+      } catch (err) {
+        errEl.textContent = 'Error: ' + err.message;
+        btn.disabled      = false;
+        btn.textContent   = 'Open GPX file';
+      }
+    });
   }
 
   // ── GitHub Backup ─────────────────────────────────────────────────────────────
