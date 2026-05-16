@@ -1732,6 +1732,21 @@
     URL.revokeObjectURL(url);
   }
 
+  async function sendToGps() {
+    if (!currentGpxText) return;
+    const route    = savedRoutes.find(r => r.id === activeRouteId)
+                   || uploadedRoutes.find(r => r.id === activeRouteId);
+    const baseName = (route?.name || 'track').replace(/[^a-z0-9_\-]/gi, '_');
+    const filename = `${baseName}.gpx`;
+    const file     = new File([currentGpxText], filename, { type: 'application/gpx+xml' });
+
+    try {
+      await navigator.share({ files: [file], title: route?.name || 'GPX Route' });
+    } catch (err) {
+      if (err.name !== 'AbortError') showShareToast('Could not open share sheet: ' + err.message);
+    }
+  }
+
   async function shareRoute() {
     if (!currentGpxText) return;
     if (!getPat()) { openPatModal(); return; }
@@ -3331,6 +3346,17 @@
       if (currentGpxText) downloadGpx(simplifyGpxForSharing(currentGpxText), 'simplified');
     });
     document.addEventListener('click', () => { dlMenu.hidden = true; });
+
+    // Send to GPS button — only shown when Web Share API supports files (mobile browsers)
+    const sendToGpsBtn = document.getElementById('btn-send-to-gps');
+    const canShareFiles = (() => {
+      try {
+        const probe = new File([''], 'probe.gpx', { type: 'application/gpx+xml' });
+        return !!navigator.canShare?.({ files: [probe] });
+      } catch { return false; }
+    })();
+    if (canShareFiles) sendToGpsBtn.style.display = '';
+    sendToGpsBtn.addEventListener('click', sendToGps);
 
     // Share route button
     document.getElementById('btn-share-route').addEventListener('click', shareRoute);
