@@ -44,18 +44,33 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
 - All filters (search, activity, difficulty) stack and work together
 
+### 🔒 Privacy Zones
+- Define any number of **safe zones** (home, family's place, etc.) — track points within each zone's radius are hidden when sharing
+- Each zone has an independently configurable **radius** (10 m – 5 km) set with a slider; click the value to type a number directly in metres
+- Add zones by **address search**, **map picker** (click or drag), or **browser geolocation**
+- **Edit any zone** — click the pencil icon in the Privacy Zones list to reopen the map picker with the existing location and radius pre-loaded; drag the marker or search a new address to relocate, adjust the radius with live circle preview
+- **Zone circles** are always visible on the main map — amber dashed circles in both library overview and single-track view, layered above route tracks
+- Zone data is stored only in the browser (localStorage) and never transmitted anywhere
+
+### 🔗 Route Sharing with privacy trimming
+- **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a share link is shown in a popup
+- Copy the link with the **Copy** button or select it manually — no clipboard permission required
+- Recipients open the link and the route loads automatically — no account or token needed to view
+- Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
+- Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
+- **Privacy trim picker** — if the route passes through a privacy zone, a full-screen map appears before sharing; the route is shown in blue (kept) and grey (removed), with a green start marker and red end marker pre-positioned at the first/last points outside the zones; drag the markers along the track to fine-tune exactly what gets shared; choose **Share trimmed** or **Share full route** — the original stored route is never modified
+
 ### 📥 Download & Send
 - **Download button** in the route header — choose between two options:
   - **Full track** — downloads the original GPX file as-is
   - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
 - **Send to my GPS app** — desktop-to-phone workflow: uploads the full GPX to a GitHub Gist and shows a QR code. Scan it on your phone; a dedicated landing page opens with a single "Open GPX file" button. On **Android**, tapping it triggers the native share sheet so you can open it directly in any GPS app. On **iPhone**, the file downloads to Safari's Downloads folder — tap the file there and choose **Open in…** to send it to Garmin Connect, Coros, GPX Viewer, or any other GPS app. Requires a GitHub PAT with the `gist` scope.
 
-### 🔗 Route Sharing
-- **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a share link is shown in a popup
-- Copy the link with the **Copy** button or select it manually — no clipboard permission required
-- Recipients open the link and the route loads automatically — no account or token needed to view
-- Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
-- Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
+### ✂️ Edit Start/End Points
+- **Scissors button** in the route header — opens the same trim picker used during sharing, but in edit mode
+- Drag the green (start) and red (end) markers along the track to set the new endpoints
+- Confirm with **Apply trim** to permanently shorten the route in your library — stats and map update immediately
+- Useful for removing warm-up walks, accidental GPS drift at the start, or the ride home after a trail
 
 ### 📱 Mobile-Friendly
 - Sidebar slides in as a full-screen drawer via the floating **Routes** button
@@ -67,10 +82,11 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 2. **Preview** on the interactive map with full stats
 3. **Save** to your library (persists across browser sessions)
 4. **Edit metadata** inline — pencil icons next to name, description, and author
-5. **Download** the full or simplified track at any time
-6. **Share** a link directly — no file attachments needed
-7. **Send to my GPS app** — scan the QR code with your phone; on Android the GPS app picker opens directly, on iPhone download the file and use **Open in…** to send it to Garmin Connect, Coros, or any other GPS app
-8. **Export** for backup, or enable auto-backup to a private GitHub repository
+5. **Trim** start/end points with the scissors button — permanently crops the stored route
+6. **Download** the full or simplified track at any time
+7. **Share** a link directly — if the route passes through a privacy zone, choose exactly what to share with the visual trim picker
+8. **Send to my GPS app** — scan the QR code with your phone; on Android the GPS app picker opens directly, on iPhone download the file and use **Open in…** to send it to Garmin Connect, Coros, or any other GPS app
+9. **Export** for backup, or enable auto-backup to a private GitHub repository
 
 ## How to Use
 
@@ -105,10 +121,22 @@ Two options are available under **"···"** → **Import** in the library heade
 - A GitHub Personal Access Token with the `repo` scope is required; if you already have one saved it is used automatically
 - The app fetches `gpx-library.json` from that repository and prompts to Merge or Overwrite
 
+### Set Up Privacy Zones
+1. Click the **shield icon** (🔒) in the sidebar header to open Privacy Zones
+2. Add a zone by typing an address and clicking **Search**, clicking **Pick on map**, or using **Use my location**
+3. Adjust the **radius** with the slider (10 m – 5 km) — click the displayed value to type in metres directly
+4. Click **Add zone** — the zone appears in the list and as an amber circle on the map
+5. To **edit** a zone, click the pencil (✎) icon next to it — the map picker opens with the existing location and radius; drag the marker, search a new address, or adjust the radius; click **Save changes**
+6. To **remove** a zone, click the ✕ button next to it
+
 ### Share a Route
 - Load any route from the sidebar
-- Click the **Share** button in the route header
+- Click the **Share** button (↗ icon) in the route header
 - On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — [create one here](https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share). The token is saved in your browser's localStorage and never sent anywhere except GitHub
+- **If the route passes through a privacy zone**, a full-screen trim picker appears:
+  - The route is shown in blue (shared) and grey (hidden)
+  - Drag the green marker to set the new start point, drag the red marker to set the new end point — both snap to the nearest track point on release
+  - Click **Share trimmed** to share only the visible section, or **Share full route** to share without trimming
 - The track is simplified and saved as a public GitHub Gist; a popup appears with the share link
 - Click **Copy** or select the link manually, then send it to anyone
 - The recipient opens the link and the route loads automatically — no token required to view
@@ -117,6 +145,14 @@ Two options are available under **"···"** → **Import** in the library heade
 > **Note:** Shared links are backed by [GitHub Gist](https://gist.github.com/), which stores them permanently (until the Gist owner deletes them). Recipients should still save shared routes to their local library to ensure long-term access.
 
 > **Track simplification:** Before sharing, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
+
+### Edit Start/End Points
+- Load any route from the sidebar
+- Click the **scissors** (✂) icon in the route header
+- The trim picker opens with markers at the current start and end of the track
+- Drag the **green marker** to set a new start, drag the **red marker** to set a new end — markers snap to the nearest track point on release
+- Click **Apply trim** — the route is permanently shortened in your library and stats update immediately
+- This action modifies the stored route; export your library first if you want to keep a backup
 
 ### Send to my GPS app
 1. Load any route from the sidebar
@@ -172,7 +208,7 @@ Two options are available under **"···"** → **Import** in the library heade
   - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
   - [GitHub Contents API](https://docs.github.com/en/rest/repos/contents) — optional library backup to a private repo (needs `repo` scope)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
-  - [Nominatim](https://nominatim.org/) — reverse geocoding for location search (free)
+  - [Nominatim](https://nominatim.org/) — forward and reverse geocoding for location search and privacy zone address lookup (free)
   - [Overpass API](https://overpass-api.de/) — ski resort piste & lift data from OpenStreetMap (free; results cached 24 h in localStorage)
 
 ## File Structure
