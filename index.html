@@ -388,15 +388,20 @@
     </div>
     <p class="share-dialog-hint">Your library will be automatically saved as <code>gpx-library.json</code> in a private GitHub repository, 30 seconds after any change.</p>
     <p class="share-dialog-hint">Your token needs the <code>repo</code> scope (in addition to <code>gist</code> for sharing). Leave the field empty to disable backup.</p>
-    <div class="pat-input-row">
+    <label class="pat-input-row">
+      <span class="pat-field-label">Repository</span>
       <input type="text" id="backup-repo-input" class="share-url-input pat-token-input" placeholder="username/repo-name" autocomplete="off" spellcheck="false" />
-    </div>
+    </label>
+    <label class="pat-input-row">
+      <span class="pat-field-label">GitHub token</span>
+      <input type="password" id="backup-pat-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
+    </label>
     <p id="backup-error" class="pat-error"></p>
     <div class="pat-actions">
       <a href="https://github.com/settings/tokens/new?scopes=repo,gist&description=GPX+Library" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token with repo + gist scopes ↗</a>
       <button id="backup-save-btn" class="share-copy-btn">Save</button>
     </div>
-    <p class="pat-privacy-note">The repository must already exist. Make it private to keep your routes confidential.</p>
+    <p class="pat-privacy-note">The repository must already exist. Make it private to keep your routes confidential. Your token is stored only in this browser.</p>
   </div>
 </div>
 
