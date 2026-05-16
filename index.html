@@ -216,9 +216,9 @@
                   <button class="download-menu-item" id="dl-simplified">Simplified track</button>
                 </div>
               </div>
-              <button id="btn-send-to-gps" class="btn-share-route" title="Send GPX file" style="display:none">
+              <button id="btn-send-to-gps" class="btn-share-route" title="Send to my GPS app">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-                <span>Send GPX file</span>
+                <span>Send to my GPS app</span>
               </button>
               <button id="btn-share-route" class="btn-share-route" title="Copy share link to clipboard">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
@@ -352,12 +352,23 @@
       <input type="text" id="share-url-input" class="share-url-input" readonly />
       <button id="share-copy-btn" class="share-copy-btn">Copy</button>
     </div>
-    <div class="share-qr-section">
-      <div id="share-qr"></div>
-      <p class="share-qr-label">Scan to open on mobile</p>
-    </div>
     <div class="share-dialog-footer">
       <button id="share-change-token-btn" class="share-change-token-btn">Change GitHub token</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── GPS QR Modal ─────────────────────────────────────────────────────── -->
+<div id="gps-qr-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="gps-qr-modal-title">
+  <div class="share-dialog gps-qr-dialog">
+    <div class="share-dialog-header">
+      <h3 id="gps-qr-modal-title">Send to my GPS app</h3>
+      <button id="gps-qr-modal-close" class="share-close-btn" title="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">Scan this QR code with your phone. It will open the GPX file and let you choose your GPS app.</p>
+    <div class="gps-qr-body">
+      <div id="gps-qr"></div>
+      <p class="share-qr-label" id="gps-qr-label">Generating…</p>
     </div>
   </div>
 </div>
