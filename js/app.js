@@ -6,7 +6,7 @@
 (function () {
 
   // ── Deploy metadata ──────────────────────────────────────────────────────────
-  const DEPLOY_DATE   = 'May 2026'; // update this string on each deploy
+  const DEPLOY_DATE   = 'May 16 2026'; // update this string on each deploy. Format must be `date +'%B %-d %Y'`
   const GITHUB_REPO   = 'https://github.com/rotadsr/web-gpx-library';
 
   // ── Module state ─────────────────────────────────────────────────────────────
