@@ -176,6 +176,14 @@
     checkGpxSendParam();
     checkSharedGistParam();
 
+    const urlParams = new URLSearchParams(window.location.search);
+    if (!urlParams.get('gist') && !urlParams.get('gpx-send') && savedRoutes.length > 0) {
+      overviewMode = true;
+      const btn = document.getElementById('btn-overview');
+      if (btn) { btn.classList.add('is-active'); btn.title = 'Exit map overview'; }
+      await enterOverview();
+    }
+
     let searchDebounceTimer = null;
     document.getElementById('search-input').addEventListener('input', e => {
       searchQuery = e.target.value.toLowerCase().trim();
