@@ -1733,21 +1733,6 @@
     URL.revokeObjectURL(url);
   }
 
-  async function sendToGps() {
-    if (!currentGpxText) return;
-    const route    = savedRoutes.find(r => r.id === activeRouteId)
-                   || uploadedRoutes.find(r => r.id === activeRouteId);
-    const baseName = (route?.name || 'track').replace(/[^a-z0-9_\-]/gi, '_');
-    const filename = `${baseName}.gpx`;
-    const file     = new File([currentGpxText], filename, { type: 'application/gpx+xml' });
-
-    try {
-      await navigator.share({ files: [file], title: route?.name || 'GPX Route' });
-    } catch (err) {
-      if (err.name !== 'AbortError') showShareToast('Could not open share sheet: ' + err.message);
-    }
-  }
-
   async function shareRoute() {
     if (!currentGpxText) return;
     if (!getPat()) { openPatModal(); return; }
@@ -1769,10 +1754,10 @@
         : null;
 
       const routeName      = document.getElementById('route-name').textContent || 'Shared Route';
-      const { id, rawUrl } = await createGist(gpxToShare, routeName);
+      const { id }         = await createGist(gpxToShare, routeName);
       const shareUrl       = window.location.origin + window.location.pathname + '?gist=' + id;
 
-      openShareModal(shareUrl, simplifyInfo, rawUrl);
+      openShareModal(shareUrl, simplifyInfo);
 
     } catch (err) {
       if (err.message === 'token_rejected' || err.message === 'no_pat') {
@@ -1829,13 +1814,11 @@
     }
   }
 
-  function openShareModal(url, simplifyInfo, rawUrl) {
-    const modal    = document.getElementById('share-modal');
-    const input    = document.getElementById('share-url-input');
-    const copyBtn  = document.getElementById('share-copy-btn');
-    const info     = document.getElementById('share-simplify-info');
-    const qrEl     = document.getElementById('share-qr');
-    const qrLabel  = document.querySelector('.share-qr-label');
+  function openShareModal(url, simplifyInfo) {
+    const modal   = document.getElementById('share-modal');
+    const input   = document.getElementById('share-url-input');
+    const copyBtn = document.getElementById('share-copy-btn');
+    const info    = document.getElementById('share-simplify-info');
 
     input.value = url;
     copyBtn.textContent = 'Copy';
@@ -1848,28 +1831,59 @@
       info.style.display = 'none';
     }
 
-    // QR points to raw GPX file so iOS shows "Open with" for GPS apps
-    const qrTarget = rawUrl || url;
-    qrEl.innerHTML = '';
-    new QRCode(qrEl, {
-      text:         qrTarget,
-      width:        160,
-      height:       160,
-      colorDark:    '#000000',
-      colorLight:   '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M,
-    });
-    qrLabel.textContent = rawUrl
-      ? 'Scan to open the GPX file on your phone'
-      : 'Scan to open on mobile';
-
     modal.style.display = 'flex';
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
 
   function closeShareModal() {
     document.getElementById('share-modal').style.display = 'none';
-    document.getElementById('share-qr').innerHTML = '';
+  }
+
+  async function sendToGpsQr() {
+    if (!currentGpxText) return;
+    if (!getPat()) { openPatModal(); return; }
+
+    const modal = document.getElementById('gps-qr-modal');
+    const qrEl  = document.getElementById('gps-qr');
+    const label = document.getElementById('gps-qr-label');
+    const btn   = document.getElementById('btn-send-to-gps');
+
+    btn.disabled = true;
+    qrEl.innerHTML = '';
+    label.textContent = 'Generating…';
+    modal.style.display = 'flex';
+
+    try {
+      const routeName      = document.getElementById('route-name').textContent || 'GPX Route';
+      const { rawUrl }     = await createGist(currentGpxText, routeName);
+
+      if (!rawUrl) throw new Error('Could not get raw file URL from Gist');
+
+      new QRCode(qrEl, {
+        text:         rawUrl,
+        width:        200,
+        height:       200,
+        colorDark:    '#000000',
+        colorLight:   '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+      label.textContent = 'Scan with your phone — tap the file to open with your GPS app';
+    } catch (err) {
+      if (err.message === 'token_rejected' || err.message === 'no_pat') {
+        closeGpsQrModal();
+        clearPat();
+        openPatModal();
+      } else {
+        label.textContent = 'Error: ' + err.message;
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function closeGpsQrModal() {
+    document.getElementById('gps-qr-modal').style.display = 'none';
+    document.getElementById('gps-qr').innerHTML = '';
   }
 
   function writeToClipboard(text) {
@@ -3366,16 +3380,12 @@
     });
     document.addEventListener('click', () => { dlMenu.hidden = true; });
 
-    // Send to GPS button — only shown when Web Share API supports files (mobile browsers)
-    const sendToGpsBtn = document.getElementById('btn-send-to-gps');
-    const canShareFiles = (() => {
-      try {
-        const probe = new File([''], 'probe.gpx', { type: 'application/gpx+xml' });
-        return !!navigator.canShare?.({ files: [probe] });
-      } catch { return false; }
-    })();
-    if (canShareFiles) sendToGpsBtn.style.display = '';
-    sendToGpsBtn.addEventListener('click', sendToGps);
+    // Send to my GPS app button — generates a Gist and shows a QR of the raw GPX URL
+    document.getElementById('btn-send-to-gps').addEventListener('click', sendToGpsQr);
+    document.getElementById('gps-qr-modal-close').addEventListener('click', closeGpsQrModal);
+    document.getElementById('gps-qr-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeGpsQrModal();
+    });
 
     // Share route button
     document.getElementById('btn-share-route').addEventListener('click', shareRoute);
