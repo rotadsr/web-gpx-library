@@ -1732,6 +1732,21 @@
     URL.revokeObjectURL(url);
   }
 
+  async function sendToGps() {
+    if (!currentGpxText) return;
+    const route    = savedRoutes.find(r => r.id === activeRouteId)
+                   || uploadedRoutes.find(r => r.id === activeRouteId);
+    const baseName = (route?.name || 'track').replace(/[^a-z0-9_\-]/gi, '_');
+    const filename = `${baseName}.gpx`;
+    const file     = new File([currentGpxText], filename, { type: 'application/gpx+xml' });
+
+    try {
+      await navigator.share({ files: [file], title: route?.name || 'GPX Route' });
+    } catch (err) {
+      if (err.name !== 'AbortError') showShareToast('Could not open share sheet: ' + err.message);
+    }
+  }
+
   async function shareRoute() {
     if (!currentGpxText) return;
     if (!getPat()) { openPatModal(); return; }
@@ -1818,6 +1833,7 @@
     const input   = document.getElementById('share-url-input');
     const copyBtn = document.getElementById('share-copy-btn');
     const info    = document.getElementById('share-simplify-info');
+    const qrEl    = document.getElementById('share-qr');
 
     input.value = url;
     copyBtn.textContent = 'Copy';
@@ -1830,12 +1846,24 @@
       info.style.display = 'none';
     }
 
+    // Generate QR code
+    qrEl.innerHTML = '';
+    new QRCode(qrEl, {
+      text:           url,
+      width:          160,
+      height:         160,
+      colorDark:      '#000000',
+      colorLight:     '#ffffff',
+      correctLevel:   QRCode.CorrectLevel.M,
+    });
+
     modal.style.display = 'flex';
     setTimeout(() => { input.focus(); input.select(); }, 50);
   }
 
   function closeShareModal() {
     document.getElementById('share-modal').style.display = 'none';
+    document.getElementById('share-qr').innerHTML = '';
   }
 
   function writeToClipboard(text) {
@@ -3331,6 +3359,17 @@
       if (currentGpxText) downloadGpx(simplifyGpxForSharing(currentGpxText), 'simplified');
     });
     document.addEventListener('click', () => { dlMenu.hidden = true; });
+
+    // Send to GPS button — only shown when Web Share API supports files (mobile browsers)
+    const sendToGpsBtn = document.getElementById('btn-send-to-gps');
+    const canShareFiles = (() => {
+      try {
+        const probe = new File([''], 'probe.gpx', { type: 'application/gpx+xml' });
+        return !!navigator.canShare?.({ files: [probe] });
+      } catch { return false; }
+    })();
+    if (canShareFiles) sendToGpsBtn.style.display = '';
+    sendToGpsBtn.addEventListener('click', sendToGps);
 
     // Share route button
     document.getElementById('btn-share-route').addEventListener('click', shareRoute);

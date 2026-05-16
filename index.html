@@ -216,6 +216,10 @@
                   <button class="download-menu-item" id="dl-simplified">Simplified track</button>
                 </div>
               </div>
+              <button id="btn-send-to-gps" class="btn-share-route" title="Send GPX file" style="display:none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+                <span>Send GPX file</span>
+              </button>
               <button id="btn-share-route" class="btn-share-route" title="Copy share link to clipboard">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 <span id="btn-share-label">Share</span>
@@ -348,6 +352,10 @@
       <input type="text" id="share-url-input" class="share-url-input" readonly />
       <button id="share-copy-btn" class="share-copy-btn">Copy</button>
     </div>
+    <div class="share-qr-section">
+      <div id="share-qr"></div>
+      <p class="share-qr-label">Scan to open on mobile</p>
+    </div>
     <div class="share-dialog-footer">
       <button id="share-change-token-btn" class="share-change-token-btn">Change GitHub token</button>
     </div>
@@ -414,6 +422,8 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <!-- MapLibre GL JS (3D terrain) -->
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js"></script>
+<!-- QR code generation -->
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <!-- App scripts -->
 <script src="js/storage.js"></script>
 <script src="js/gpxParser.js"></script>
