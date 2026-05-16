@@ -1,458 +1,302 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>GPX Library</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css" />
-</head>
-<body>
+# GPX Library 🗺️
 
-<div id="app">
+A modern, feature-rich web app for managing and visualizing GPX routes. Built with **Leaflet.js**, **Chart.js**, and **MapLibre GL JS**, entirely client-side with **IndexedDB** persistence.
 
-  <!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
-  <aside id="sidebar">
-    <div id="sidebar-header">
-      <div class="sidebar-logo-title">
-        <span class="logo">🗺️</span>
-        <div class="sidebar-title-stack">
-          <h1>GPX Library</h1>
-          <span class="sidebar-tagline">Updated <span id="deploy-date"></span></span>
-        </div>
-        <a href="https://github.com/rotadsr/web-gpx-library" target="_blank" rel="noopener noreferrer" class="sidebar-info-btn" title="View source on GitHub">
-          <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
-        </a>
-      </div>
-      <button id="sidebar-toggle-btn" class="sidebar-toggle-btn" title="Collapse sidebar" aria-label="Toggle sidebar">
-        <!-- chevron left (shown when open) -->
-        <svg class="icon-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        <!-- chevron right (shown when collapsed) -->
-        <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
-    </div>
-
-    <div id="sidebar-body">
-      <div id="search-container">
-        <input type="text" id="search-input" placeholder="Search routes…" autocomplete="off" />
-      </div>
-
-      <div id="activity-filter-section">
-        <h3>Activity</h3>
-        <div id="category-pills"></div>
-      </div>
-
-      <div id="difficulty-filter-section" style="display:none">
-        <h3>Difficulty</h3>
-        <div id="difficulty-pills"></div>
-      </div>
-
-<div id="library-container">
-        <div id="library-header">
-          <span class="lib-section-label">My Library</span>
-          <div class="lib-actions">
-            <button id="btn-overview" class="lib-action-btn" title="Show all routes on map">Show all</button>
-            <button id="btn-sort-lib" class="lib-action-btn" title="Sort routes">⇅ A→Z</button>
-            <input type="file" id="import-lib-input" accept=".json" hidden />
-            <button id="btn-lib-menu" class="lib-action-btn lib-menu-btn" title="Library actions">···</button>
-          </div>
-        </div>
-        <div id="file-tree"></div>
-        <div id="backup-status-bar"><span id="backup-status" class="backup-status" style="display:none"></span></div>
-      </div>
-
-      <!-- Upload zone -->
-      <div id="upload-zone" role="button" tabindex="0" title="Upload GPX files (temporary — cleared on refresh)">
-        <input type="file" id="file-input" accept=".gpx" multiple hidden />
-        <span class="upload-icon">📤</span>
-        <span class="upload-label">Upload GPX files</span>
-        <span class="upload-hint">drag &amp; drop · or click</span>
-      </div>
-    </div>
-  </aside>
-
-  <!-- Sidebar drag-to-resize handle -->
-  <div id="sidebar-resize-handle" title="Drag to resize · Double-click to reset"></div>
-
-  <!-- Mobile: floating "Routes" button (hidden on desktop) -->
-  <button id="mobile-lib-btn" aria-label="Open routes library">
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-    Routes
-  </button>
-
-  <!-- Mobile: sidebar backdrop (hidden on desktop) -->
-  <div id="mobile-backdrop"></div>
-
-  <!-- ── Main ─────────────────────────────────────────────────────────────── -->
-  <main id="main">
-
-    <!-- Empty state -->
-    <div id="empty-state">
-      <div class="empty-icon">🗺️</div>
-      <h2>Select a route</h2>
-      <p class="hide-mobile">Choose a GPX file from the library on the left to view it on the map.</p>
-      <p class="show-mobile">Tap <strong>Routes</strong> to browse your library.</p>
-    </div>
-
-    <!-- Route view (shown when a file is selected) -->
-    <div id="route-view" style="display:none">
-
-      <!-- Map -->
-      <div id="map-container">
-        <div id="map"></div>
-
-        <!-- Overview tooltip (follows cursor when in overview mode) -->
-        <div id="overview-tooltip" style="display:none"></div>
-
-        <!-- Heatmap route-count badge (visible only in heatmap mode) -->
-        <div id="heatmap-badge" style="display:none"></div>
-
-        <!-- Piste difficulty legend (visible when ski overlay is active) -->
-        <div id="piste-legend" style="display:none">
-          <div class="piste-legend-title">Piste difficulty</div>
-          <div class="piste-legend-row"><span class="piste-swatch" style="background:#22c55e"></span>Beginner</div>
-          <div class="piste-legend-row"><span class="piste-swatch" style="background:#3b82f6"></span>Easy</div>
-          <div class="piste-legend-row"><span class="piste-swatch" style="background:#ef4444"></span>Intermediate</div>
-          <div class="piste-legend-row"><span class="piste-swatch" style="background:#1e293b"></span>Advanced</div>
-          <div class="piste-legend-row"><span class="piste-swatch" style="background:#f97316"></span>Expert</div>
-          <div class="piste-legend-row"><span class="piste-swatch piste-swatch-lift"></span>Lift</div>
-        </div>
-
-        <!-- Vertical toolbar (right side) -->
-        <div id="map-toolbar">
-          <button class="map-tool" id="btn-zoom-in" title="Zoom in">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <button class="map-tool" id="btn-zoom-out" title="Zoom out">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-locate" title="My location">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>
-          </button>
-          <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-layers" title="Change map layer">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-          </button>
-          <button class="map-tool" id="btn-legend" title="Legend">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><circle cx="12" cy="8" r="0.5" fill="currentColor"/></svg>
-          </button>
-          <button class="map-tool" id="btn-query" title="Query location on click">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          </button>
-          <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-ski" title="Show ski resort pistes for this area">❄️</button>
-          <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-3d" title="3D route view">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-          </button>
-        </div>
-
-        <!-- deck.gl 3D overlay — rendered over the Leaflet map when active -->
-        <div id="map-3d"></div>
-
-        <!-- Elevation legend (visible when 3D is active) -->
-        <div id="view3d-legend" style="display:none">
-          <span id="view3d-ele-min" class="view3d-ele-label">—</span>
-          <div class="view3d-gradient-bar"></div>
-          <span id="view3d-ele-max" class="view3d-ele-label">—</span>
-        </div>
-
-        <!-- Layer picker panel -->
-        <div id="layer-panel" class="map-panel" hidden>
-          <div class="panel-header">Map Layers</div>
-          <div id="layer-list"></div>
-        </div>
-
-        <!-- Legend panel -->
-        <div id="legend-panel" class="map-panel" hidden>
-          <div class="panel-header">Legend</div>
-          <div class="legend-body">
-            <div class="legend-item"><span class="leg-dot" style="background:#22c55e"></span>Start point</div>
-            <div class="legend-item"><span class="leg-dot" style="background:#ef4444"></span>End point</div>
-            <div class="legend-item"><span class="leg-line"></span>Route track</div>
-            <div class="legend-item"><span class="leg-dot" style="background:#f59e0b"></span>Elevation cursor</div>
-            <div class="legend-item"><span class="leg-dot" style="background:#3b82f6"></span>Your location</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Drag-to-resize handle -->
-      <div id="split-handle" title="Drag to resize · Double-click to fit all content"><div class="split-grip"></div></div>
-
-      <!-- Details panel -->
-      <div id="details-panel">
-
-        <!-- Mobile: drag handle to expand/collapse the bottom sheet -->
-        <div id="mobile-sheet-handle" role="button" aria-label="Toggle route details" tabindex="0"></div>
-
-        <!-- Shown when a route is loaded from a shared link -->
-        <div id="shared-route-banner" style="display:none">
-          <span class="banner-icon">🔗</span>
-          <span class="banner-text">This route was shared via a link. Save it to your library to keep it permanently.</span>
-          <button id="banner-save-btn" class="banner-save-btn">Save to Library</button>
-          <button id="banner-dismiss-btn" class="banner-dismiss-btn" title="Dismiss">✕</button>
-        </div>
-
-        <div id="route-header">
-          <div class="route-title-row">
-            <div class="route-name-group">
-              <span id="route-activity-icon" class="route-activity-icon" style="display:none"></span>
-              <h2 id="route-name"></h2>
-              <button class="field-edit-btn" id="edit-btn-name" title="Edit route name" aria-label="Edit route name">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
-              </button>
-              <span id="route-difficulty-badge" class="route-difficulty-badge" style="display:none"></span>
-            </div>
-            <div class="route-header-controls">
-              <div class="btn-download-wrap">
-                <button id="btn-download-route" class="btn-share-route" title="Download GPX">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  <span>Download</span>
-                </button>
-                <div id="download-menu" class="download-menu" hidden>
-                  <button class="download-menu-item" id="dl-full">Full track</button>
-                  <button class="download-menu-item" id="dl-simplified">Simplified track</button>
-                </div>
-              </div>
-              <button id="btn-send-to-gps" class="btn-share-route" title="Send to my GPS app">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-                <span>Send to my GPS app</span>
-              </button>
-              <button id="btn-share-route" class="btn-share-route" title="Copy share link to clipboard">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                <span id="btn-share-label">Share</span>
-              </button>
-              <div class="unit-toggle" id="unit-toggle">
-                <span class="unit-label">Unit:</span>
-                <button class="unit-opt is-active" data-unit="metric"   title="Metric (km, m, km/h)">km</button>
-                <span  class="unit-sep">|</span>
-                <button class="unit-opt"           data-unit="imperial" title="Imperial (mi, ft, mph)">mi</button>
-              </div>
-            </div>
-          </div>
-          <div class="route-desc-row">
-            <p id="route-description"></p><button class="field-edit-btn" id="edit-btn-description" title="Edit description" aria-label="Edit description"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg></button>
-          </div>
-        </div>
-
-        <div id="stats-grid">
-          <div class="stat-card">
-            <span class="stat-label">Distance</span>
-            <span class="stat-value" id="stat-distance">—</span>
-          </div>
-          <div class="stat-card editable-stat" data-editable="duration" title="Click to set a custom pace">
-            <span class="stat-label">Duration <span class="edit-hint">edit</span></span>
-            <span class="stat-value" id="stat-duration">—</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Total gain</span>
-            <span class="stat-value" id="stat-elevation-gain">—</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Elev. range</span>
-            <span class="stat-value" id="stat-elevation-range">—</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Max elevation</span>
-            <span class="stat-value" id="stat-max-elevation">—</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Min elevation</span>
-            <span class="stat-value" id="stat-min-elevation">—</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">Gradient</span>
-            <span class="stat-value" id="stat-gradient">—</span>
-          </div>
-          <div class="stat-card editable-stat" data-editable="speed" title="Click to set a custom pace">
-            <span class="stat-label">Avg speed <span class="edit-hint">edit</span></span>
-            <span class="stat-value" id="stat-avg-speed">—</span>
-          </div>
-          <div class="stat-card editable-stat" data-field-edit="author" title="Click to edit author">
-            <span class="stat-label">Author <span class="edit-hint">edit</span></span>
-            <span class="stat-value" id="stat-author" style="font-size:14px">—</span>
-          </div>
-        </div>
-
-        <!-- shown when duration/speed are manually overridden -->
-        <div id="override-bar" style="display:none">
-          <span>⚡ Custom pace active</span>
-          <div id="override-bar-buttons">
-            <button id="bake-override-btn">✓ Override values</button>
-            <button id="reset-override-btn">↺ Reset to GPX values</button>
-          </div>
-        </div>
-
-        <div id="chart-container" style="display:none">
-          <div class="chart-header">
-            <h3>Elevation Profile</h3>
-            <div class="chart-mode-toggle">
-              <button class="chart-mode-btn is-active" data-mode="elevation">Elevation</button>
-              <button class="chart-mode-btn" data-mode="gradient">Gradient</button>
-            </div>
-          </div>
-          <div id="chart-wrapper">
-            <canvas id="elevation-chart"></canvas>
-          </div>
-        </div>
-
-        <div id="weather-section" style="display:none">
-          <div class="weather-header">
-            <h3>7-Day Forecast</h3>
-            <span id="weather-location" class="weather-loc"></span>
-          </div>
-          <div class="weather-legend">
-            <span class="wl-item wl-best">Good</span>
-            <span class="wl-item wl-neutral">Neutral</span>
-            <span class="wl-item wl-bad">Avoid</span>
-          </div>
-          <div id="weather-days"></div>
-          <div id="weather-hourly" style="display:none"></div>
-          <p class="weather-disclaimer">Always use your own judgement before going out. Colour highlights are indicative only — check the full forecast and make your own decision.</p>
-        </div>
-      </div>
-
-    </div><!-- /route-view -->
-  </main>
-</div>
-
-<!-- ── PAT Setup Modal ──────────────────────────────────────────────────── -->
-<div id="pat-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="pat-modal-title">
-  <div class="share-dialog pat-dialog">
-    <div class="share-dialog-header">
-      <h3 id="pat-modal-title">GitHub Token Required</h3>
-      <button id="pat-modal-close" class="share-close-btn" title="Close">✕</button>
-    </div>
-    <p class="share-dialog-hint">To share routes you need a GitHub Personal Access Token (PAT) with the <code>gist</code> scope. It is stored only in <em>this browser</em> and is never sent anywhere except GitHub.</p>
-    <p class="share-dialog-hint">Recipients don't need a token — anyone with the link can view the route.</p>
-    <div class="pat-input-row">
-      <input type="password" id="pat-token-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
-    </div>
-    <p id="pat-error" class="pat-error"></p>
-    <div class="pat-actions">
-      <a href="https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token on GitHub ↗</a>
-      <button id="pat-save-btn" class="share-copy-btn">Save &amp; Share</button>
-    </div>
-    <p class="pat-privacy-note">Your token is stored in this browser's localStorage and is only used to create Gists on your behalf.</p>
-  </div>
-</div>
-
-<!-- ── Share Modal ──────────────────────────────────────────────────────── -->
-<div id="share-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="share-modal-title">
-  <div class="share-dialog">
-    <div class="share-dialog-header">
-      <h3 id="share-modal-title">Share Route</h3>
-      <button id="share-modal-close" class="share-close-btn" title="Close">✕</button>
-    </div>
-    <p class="share-dialog-hint">Anyone with this link can view the route. Recipients can save it to their local library.</p>
-    <p id="share-simplify-info" class="share-simplify-info" style="display:none"></p>
-    <div class="share-link-row">
-      <input type="text" id="share-url-input" class="share-url-input" readonly />
-      <button id="share-copy-btn" class="share-copy-btn">Copy</button>
-    </div>
-    <div class="share-dialog-footer">
-      <button id="share-change-token-btn" class="share-change-token-btn">Change GitHub token</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── GPS QR Modal ─────────────────────────────────────────────────────── -->
-<div id="gps-qr-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="gps-qr-modal-title">
-  <div class="share-dialog gps-qr-dialog">
-    <div class="share-dialog-header">
-      <h3 id="gps-qr-modal-title">Send to my GPS app</h3>
-      <button id="gps-qr-modal-close" class="share-close-btn" title="Close">✕</button>
-    </div>
-    <p class="share-dialog-hint">Scan this QR code with your phone. It will open the GPX file and let you choose your GPS app.</p>
-    <div class="gps-qr-body">
-      <div id="gps-qr"></div>
-      <p class="share-qr-label" id="gps-qr-label">Generating…</p>
-    </div>
-  </div>
-</div>
-
-<!-- ── GitHub Import Modal ──────────────────────────────────────────────── -->
-<div id="gh-import-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="gh-import-modal-title">
-  <div class="share-dialog pat-dialog">
-    <div class="share-dialog-header">
-      <h3 id="gh-import-modal-title">Import from GitHub</h3>
-      <button id="gh-import-modal-close" class="share-close-btn" title="Close">✕</button>
-    </div>
-    <p class="share-dialog-hint">Fetch <code>gpx-library.json</code> from a GitHub repository. The repo must contain a file exported from this app.</p>
-    <label class="pat-input-row">
-      <span class="pat-field-label">Repository</span>
-      <input type="text" id="gh-import-repo-input" class="share-url-input pat-token-input" placeholder="username/repo-name" autocomplete="off" spellcheck="false" />
-    </label>
-    <div id="gh-import-pat-row" class="pat-input-row" style="display:none">
-      <span class="pat-field-label">GitHub token</span>
-      <input type="password" id="gh-import-pat-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
-    </div>
-    <p id="gh-import-token-note" class="pat-privacy-note" style="display:none"></p>
-    <p id="gh-import-error" class="pat-error"></p>
-    <div class="pat-actions">
-      <a href="https://github.com/settings/tokens/new?scopes=repo&description=GPX+Library+Import" target="_blank" rel="noopener noreferrer" class="pat-gh-link" id="gh-import-token-link" style="display:none">Create token with repo scope ↗</a>
-      <button id="gh-import-btn" class="share-copy-btn">Import</button>
-    </div>
-  </div>
-</div>
-
-<!-- ── Backup Settings Modal ────────────────────────────────────────────── -->
-<div id="backup-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
-  <div class="share-dialog pat-dialog">
-    <div class="share-dialog-header">
-      <h3 id="backup-modal-title">GitHub Backup Settings</h3>
-      <button id="backup-modal-close" class="share-close-btn" title="Close">✕</button>
-    </div>
-    <p class="share-dialog-hint">Your library will be automatically saved as <code>gpx-library.json</code> in a private GitHub repository, 30 seconds after any change.</p>
-    <p class="share-dialog-hint">Your token needs the <code>repo</code> scope (in addition to <code>gist</code> for sharing). Leave the field empty to disable backup.</p>
-    <label class="pat-input-row">
-      <span class="pat-field-label">Repository</span>
-      <input type="text" id="backup-repo-input" class="share-url-input pat-token-input" placeholder="username/repo-name" autocomplete="off" spellcheck="false" />
-    </label>
-    <label class="pat-input-row">
-      <span class="pat-field-label">GitHub token</span>
-      <input type="password" id="backup-pat-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
-    </label>
-    <p id="backup-error" class="pat-error"></p>
-    <div class="pat-actions">
-      <a href="https://github.com/settings/tokens/new?scopes=repo,gist&description=GPX+Library" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token with repo + gist scopes ↗</a>
-      <button id="backup-save-btn" class="share-copy-btn">Save</button>
-    </div>
-    <p class="pat-privacy-note">The repository must already exist. Make it private to keep your routes confidential. Your token is stored only in this browser.</p>
-  </div>
-</div>
+Try it live: https://rotadsr.github.io/web-gpx-library/
 
 
-<!-- ── GPS Send Landing Page ─────────────────────────────────────────────── -->
-<div id="gpx-send-screen" style="display:none" aria-live="polite">
-  <div class="gpx-send-card">
-    <div class="gpx-send-icon">🗺️</div>
-    <h2 id="gpx-send-route-name">Loading route…</h2>
-    <p class="gpx-send-hint">Tap the button below to download the GPX file. On Android, the share sheet will offer to open it directly in a GPS app. On iPhone, the file downloads first — go to Downloads in Safari, tap the file, then tap <strong>Open in…</strong> to send it to Garmin Connect, GPX Viewer, or any other GPS app.</p>
-    <button id="gpx-send-open-btn" class="gpx-send-open-btn" disabled>Open GPX file</button>
-    <p id="gpx-send-error" class="gpx-send-error"></p>
-  </div>
-</div>
+## Features
 
-<!-- Leaflet -->
-<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- Leaflet.heat (heatmap layer for overview mode) -->
-<script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<!-- MapLibre GL JS (3D terrain) -->
-<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.js"></script>
-<!-- QR code generation -->
-<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
-<!-- App scripts -->
-<script src="js/storage.js"></script>
-<script src="js/gpxParser.js"></script>
-<script src="js/mapManager.js"></script>
-<script src="js/activities.js"></script>
-<script src="js/view3d.js"></script>
-<script src="js/app.js"></script>
+### 📍 Route Visualization
+- Interactive map with multiple tile layers (OpenStreetMap, OpenTopoMap, Esri, etc.)
+- Route track display with start (🟢) and end (🔴) point markers
+- Real-time elevation cursor on the map
+- **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
+- **Ski resort piste overlay** — colour-coded run difficulty (🟢 beginner → 🔵 easy → 🔴 intermediate → ⚫ advanced, dashed lifts) loaded automatically for 35 resorts across the Alps, Andorra, and Spain
 
-</body>
-</html>
+### 🗺️ Overview Mode
+- **Show all routes** on the map at once with the "Show all" button
+- At zoom ≤ 9, routes automatically switch to a **density heatmap** — colour intensity shows where routes concentrate
+- **Route count bubbles** per zone show how many routes are in each area
+- Click a heatmap zone to zoom the map to fit that area
+- Click any route in the sidebar to exit overview and fly to that track; click the same route again to return to overview
+
+### 📊 Detailed Route Analytics
+- **Elevation profile chart** — interactive graph showing elevation vs. distance
+- **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed — duration and average speed are editable; editing one updates the other automatically
+- **Difficulty rating** — smart algorithm based on distance, elevation, and gradient
+- **7-day weather forecast** — powered by Open-Meteo API (no key required)
+
+### 💾 Persistent Library
+- **My Library** — save routes permanently to the browser (IndexedDB)
+- **Session uploads** — temporary routes for quick preview
+- **Inline metadata editing** — click the pencil icon next to a route name, description, or author to edit in place; changes are saved immediately to the library and synced into the GPX file
+- **Export/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository
+- **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes)
+
+### 🔍 Search & Filter
+- Full-text search across route names, descriptions, and tags
+- **Location search** — search by city, county, region, or country (e.g. "Alps", "Catalunya", "Norway")
+- **Country flag emoji search** — type a flag like 🇫🇷, 🇪🇸, or 🇯🇵 to filter routes by country
+- **Difficulty search** — type `easy`, `moderate`, `hard`, or `expert` to filter by difficulty level
+- Semantic keyword expansion (e.g. "winter" finds all snow activities)
+- **Activity filter** — category pills (hiking, cycling, water sports, etc.) with icons
+- **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
+- All filters (search, activity, difficulty) stack and work together
+
+### 📥 Download & Send
+- **Download button** in the route header — choose between two options:
+  - **Full track** — downloads the original GPX file as-is
+  - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
+- **Send to my GPS app** — desktop-to-phone workflow: uploads the full GPX to a GitHub Gist and shows a QR code. Scan it on your phone; a dedicated landing page opens with a single "Open GPX file" button. On **Android**, tapping it triggers the native share sheet so you can open it directly in any GPS app. On **iPhone**, the file downloads to Safari's Downloads folder — tap the file there and choose **Open in…** to send it to Garmin Connect, Coros, GPX Viewer, or any other GPS app. Requires a GitHub PAT with the `gist` scope.
+
+### 🔗 Route Sharing
+- **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a share link is shown in a popup
+- Copy the link with the **Copy** button or select it manually — no clipboard permission required
+- Recipients open the link and the route loads automatically — no account or token needed to view
+- Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
+- Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
+
+### 📱 Mobile-Friendly
+- Sidebar slides in as a full-screen drawer via the floating **Routes** button
+- Details panel collapses to a bottom sheet; tap the handle to expand
+- Tap any route to close the sidebar and fly to the track
+
+### ⚙️ User-Friendly Workflow
+1. **Upload** a GPX file (drag & drop or click)
+2. **Preview** on the interactive map with full stats
+3. **Save** to your library (persists across browser sessions)
+4. **Edit metadata** inline — pencil icons next to name, description, and author
+5. **Download** the full or simplified track at any time
+6. **Share** a link directly — no file attachments needed
+7. **Send to my GPS app** — scan the QR code with your phone; on Android the GPS app picker opens directly, on iPhone download the file and use **Open in…** to send it to Garmin Connect, Coros, or any other GPS app
+8. **Export** for backup, or enable auto-backup to a private GitHub repository
+
+## How to Use
+
+### Online
+No installation needed — just open the app in your browser (GitHub Pages link).
+
+### Upload a Route
+1. Click **"Upload GPX files"** in the left sidebar (drag & drop or click to browse)
+2. Route appears in **Uploaded Routes** section
+3. Click to view on the map
+
+### Save to Library
+- Click the **yellow save button** on any uploaded route
+- Routes persist across browser sessions in IndexedDB
+
+### Export Your Library
+- Click **"···"** → **Export** in the library header
+- Downloads `gpx-library-YYYY-MM-DD.json`
+- Keep as backup on your computer
+
+### Import Previously Exported Library
+Two options are available under **"···"** → **Import** in the library header:
+
+**From a local file:**
+- Click **"···"** → **Import from file…**
+- Select a `.json` file exported from this app
+- Choose **Merge** (add to existing) or **Overwrite** (replace all)
+
+**From a GitHub repository:**
+- Click **"···"** → **Import from GitHub…**
+- Enter the repository name in `username/repo-name` format — if you have a backup repo configured it will be pre-filled
+- A GitHub Personal Access Token with the `repo` scope is required; if you already have one saved it is used automatically
+- The app fetches `gpx-library.json` from that repository and prompts to Merge or Overwrite
+
+### Share a Route
+- Load any route from the sidebar
+- Click the **Share** button in the route header
+- On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — [create one here](https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share). The token is saved in your browser's localStorage and never sent anywhere except GitHub
+- The track is simplified and saved as a public GitHub Gist; a popup appears with the share link
+- Click **Copy** or select the link manually, then send it to anyone
+- The recipient opens the link and the route loads automatically — no token required to view
+- A banner prompts recipients to save the route to their local library
+
+> **Note:** Shared links are backed by [GitHub Gist](https://gist.github.com/), which stores them permanently (until the Gist owner deletes them). Recipients should still save shared routes to their local library to ensure long-term access.
+
+> **Track simplification:** Before sharing, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
+
+### Send to my GPS app
+1. Load any route from the sidebar
+2. Click **"Send to my GPS app"** in the route header
+3. On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — the same token used for sharing
+4. The full GPX is uploaded to a GitHub Gist and a QR code appears in a popup
+5. Scan the QR code with your phone — a lightweight landing page opens
+6. Tap **"Open GPX file"** to download the GPX file
+7. **Android**: the system share sheet opens immediately — select your GPS app (Garmin Connect, Coros, GPX Viewer, etc.)
+8. **iPhone / iPad**: the file downloads to the Safari Downloads folder. Tap the download indicator (⬇) in the Safari toolbar, tap the file, then tap **Open in…** and choose your GPS app
+
+> **Why the extra step on iPhone?** iOS Safari does not support the Web Share API for GPX files (`application/gpx+xml` is not in its file type allowlist), so the file must be downloaded first. The Downloads → Open In flow is the standard iOS way to hand a file off to a third-party app. On Android, the share sheet handles this in one tap.
+
+### Edit Route Metadata
+- With any route loaded, hover over the **route name** or **description** in the details panel to reveal a pencil icon — click to edit in place
+- Click the **Author** stat card to edit the author name
+- Changes are saved immediately to the library and written back into the GPX file
+
+### Custom Pace (Duration & Speed)
+- Click the **Duration** or **Avg speed** stat card to enter a custom value — editing one recalculates the other automatically
+- The override is saved to the library and restored the next time the route is opened (shown with a ⚡ banner)
+- **Override values** — bakes the custom pace permanently into the GPX file by rescaling the trackpoint timestamps; the override banner disappears and the new duration becomes the canonical GPX value
+- **Reset to GPX values** — discards the override and restores the original GPX timestamps
+- To edit track points, use a dedicated GPX editing app (e.g. [GPX Studio](https://gpx.studio/), [Garmin Connect](https://connect.garmin.com/))
+
+### Auto-Backup to GitHub
+- Click **"···"** → **Backup settings** in the library header
+- Enter a **repository name** (`username/repo-name`) and a **GitHub Personal Access Token** — both fields are validated inline before saving
+- Your token needs both `repo` and `gist` scopes — a link in the dialog opens GitHub's token creation page with the right scopes pre-filled. Accepted token formats: `ghp_…`, `github_pat_…`, `ghs_…`, `ghu_…`, `ghr_…`
+- Once saved, the library is automatically pushed as `gpx-library.json` to that repository 30 seconds after any change
+- The sidebar shows a live status: **Backup in 30s…** → **Backing up…** → **✓ Backed up just now**
+- Use **"···"** → **Back up now** to trigger an immediate backup at any time
+- Leave the repository field empty and click Save to disable backup
+
+### Search & Filter
+- Type in the search bar to filter by name, description, activity, location, or difficulty
+- Use a country flag emoji (🇫🇷, 🇪🇸…) to filter all routes in that country
+- Type `easy`, `moderate`, `hard`, or `expert` to filter by difficulty
+- Click activity pills under **Activity** to filter by sport category
+- Click difficulty pills under **Difficulty** to filter by difficulty level
+- All filters combine — e.g. "hard" + Cycling shows only hard cycling routes
+
+## Tech Stack
+
+- **Frontend**: Vanilla JavaScript (no frameworks)
+- **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers
+- **Heatmap**: [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat) for overview density view
+- **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
+- **Charts**: [Chart.js](https://www.chartjs.org/)
+- **QR codes**: [QRCode.js](https://github.com/davidshimjs/qrcodejs) — client-side QR generation for the "Send to my GPS app" flow
+- **Storage**: Browser IndexedDB (client-side, no server)
+- **APIs**:
+  - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
+  - [GitHub Contents API](https://docs.github.com/en/rest/repos/contents) — optional library backup to a private repo (needs `repo` scope)
+  - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
+  - [Nominatim](https://nominatim.org/) — reverse geocoding for location search (free)
+  - [Overpass API](https://overpass-api.de/) — ski resort piste & lift data from OpenStreetMap (free; results cached 24 h in localStorage)
+
+## File Structure
+
+```
+web-gpx-library/
+├── index.html              # Main HTML shell
+├── style.css               # All styles
+├── js/
+│   ├── app.js              # Core app logic
+│   ├── storage.js          # IndexedDB wrapper
+│   ├── gpxParser.js        # GPX parsing & stats
+│   ├── mapManager.js       # Leaflet integration
+│   ├── view3d.js           # MapLibre GL 3D terrain view
+│   └── activities.js       # Activity catalogue
+└── README.md               # This file
+```
+
+## Installation & Development
+
+### Local Setup
+```bash
+# Clone the repo
+git clone https://github.com/yourusername/web-gpx-library.git
+cd web-gpx-library
+
+# Serve locally (any HTTP server works)
+python3 -m http.server 8000
+# or
+npx http-server
+```
+
+Then open `http://localhost:8000` in your browser.
+
+### Deploy to GitHub Pages
+1. Push to your GitHub repo
+2. Go to **Settings** → **Pages**
+3. Select **Deploy from a branch** → `main` branch
+4. Save — your site is live at `https://yourusername.github.io/web-gpx-library`
+
+## Data & Privacy
+
+- **All data stays in your browser.** No server, no tracking.
+- IndexedDB is local to your device and browser.
+- Route difficulty and geocoded locations are cached in localStorage for fast filtering.
+- Ski resort piste data is cached in localStorage (24-hour TTL) and never leaves your browser.
+- Your GitHub PAT is stored only in your browser's localStorage and is sent exclusively to `api.github.com`.
+- Export your library regularly for backup, or enable the GitHub auto-backup feature.
+- Clearing browser site data will delete your library (export first!).
+
+## Browser Support
+
+- Chrome 24+
+- Firefox 16+
+- Safari 10+
+- Edge 15+
+
+(Requires IndexedDB and WebGL support — all modern browsers)
+
+## Features Breakdown
+
+### Difficulty Rating Algorithm
+Routes are scored based on:
+- **Distance** (base points per km)
+- **Total gain** (accumulated uphill elevation, adjusted by gradient)
+- **Gradient** (steeper = harder; computed as elevation range ÷ total distance)
+- Category-specific thresholds (cycling is "easier" than mountaineering at equal distance)
+
+Levels: 🟢 Easy, 🟡 Moderate, 🔴 Hard, ⚫ Expert
+
+### Ski Resort Piste Overlay
+When the app loads, it fetches piste and lift data from OpenStreetMap (via Overpass API) for 35 ski resorts and draws them as colour-coded polylines directly on the map:
+
+| Colour | Difficulty |
+|--------|-----------|
+| 🟢 Green | Beginner (novice) |
+| 🔵 Blue | Easy |
+| 🔴 Red | Intermediate |
+| ⚫ Black | Advanced |
+| 🟠 Orange | Expert / double-black |
+| 🟣 Purple | Freeride |
+| — Dashed grey | Lifts & aerial ways |
+
+Resort data is cached in localStorage for 24 hours so subsequent page loads are instant. The first ever load fetches resorts sequentially with a short gap to respect Overpass rate limits — all data appears progressively on the map.
+
+**Covered regions:** Andorra (Grandvalira, Ordino Arcalís, Pal-Arinsal), Spain (Baqueira Beret, Formigal, Cerler, La Molina, Sierra Nevada), France (Chamonix, Les 3 Vallées, Tignes/Val d'Isère, Paradiski, Alpe d'Huez, Portes du Soleil, Serre Chevalier), Switzerland (Verbier, Zermatt, Jungfrau, Davos Klosters, St. Moritz, Saas-Fee, Laax-Flims), Italy (Cervinia, Courmayeur, Livigno, Alta Badia, Cortina, Sestriere), Austria (Arlberg, Ischgl, Sölden, Kitzbühel, Saalbach, Schladming), Germany (Garmisch-Partenkirchen).
+
+### Sorting Options
+- **A → Z / Z → A** — alphabetical by name
+- **Newest / Oldest** — by upload date
+- **By activity** — grouped by sport category
+- **🟢 Easy first / ⚫ Hard first** — by difficulty rating
+
+### Activity Types (25+)
+**Hiking & Walking**: Hike, Trail Walking, Ultralight Hiking, Fell Running  
+**Mountain Sports**: Mountaineering, Rock Climbing, Via Ferrata, Alpine Skiing, Ski Mountaineering  
+**Cycling**: Road Bike, Gravel Bike, Cycling, Trail Cycling, MTB, E-MTB, Enduro, Downhill, Bikepacking  
+**Snow**: Touring Ski, Backcountry Skiing, Snowshoeing  
+**Running**: Running, Trail Running  
+**Water Sports**: Kayaking, Packrafting  
+
+### Elevation Profile
+- Visual representation of elevation vs. distance
+- Hover to see exact elevation and gradient at any point
+- Gradient per segment shown as an arrow: ↑ uphill, → flat, ↓ downhill
+
+### Unit Toggle
+Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fly.
+
+### Location Search & Geocoding
+When a route is first opened (or when overview mode loads all routes), its centre point is reverse-geocoded via Nominatim. The result — city, county, region, country — is cached in localStorage so future searches are instant. Searching by location, country name, or flag emoji all use this cached data.
+
+## Keyboard Shortcuts
+
+- **Escape** — cancel inline editing or exit 3D terrain view
+- **Enter** — confirm inline name edit
+- **Cmd/Ctrl + Enter** — confirm inline description edit
+- **Double-click split handle** — auto-fit map and details panel
+- **Drag split handle** — manually resize map vs. details
+
+## Contributing
+
+Found a bug or have a feature request? Open an issue on GitHub!
+
+---
+
+**Built with ❤️ for outdoor enthusiasts** — enjoy mapping your adventures! 🏔️🚴🏃
