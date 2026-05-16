@@ -23,7 +23,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
-- **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed
+- **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed — duration and average speed are editable; editing one updates the other automatically
 - **Difficulty rating** — smart algorithm based on distance, elevation, and gradient
 - **7-day weather forecast** — powered by Open-Meteo API (no key required)
 
@@ -120,6 +120,12 @@ Two options are available under **"···"** → **Import** in the library heade
 - With any route loaded, hover over the **route name** or **description** in the details panel to reveal a pencil icon — click to edit in place
 - Click the **Author** stat card to edit the author name
 - Changes are saved immediately to the library and written back into the GPX file
+
+### Custom Pace (Duration & Speed)
+- Click the **Duration** or **Avg speed** stat card to enter a custom value — editing one recalculates the other automatically
+- The override is saved to the library and restored the next time the route is opened (shown with a ⚡ banner)
+- **Override values** — bakes the custom pace permanently into the GPX file by rescaling the trackpoint timestamps; the override banner disappears and the new duration becomes the canonical GPX value
+- **Reset to GPX values** — discards the override and restores the original GPX timestamps
 - To edit track points, use a dedicated GPX editing app (e.g. [GPX Studio](https://gpx.studio/), [Garmin Connect](https://connect.garmin.com/))
 
 ### Auto-Backup to GitHub
