@@ -53,6 +53,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 ### 🔗 Route Sharing
 - **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a link is shown in a popup
 - Copy the link with the **Copy** button or select it manually — no clipboard permission required
+- **QR code** is displayed alongside the link — scan it with a mobile device to open the route instantly, no typing required
 - Recipients open the link and the route loads automatically — no account or token needed to view
 - Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
 - Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
@@ -108,8 +109,8 @@ Two options are available under **"···"** → **Import** in the library heade
 - Load any route from the sidebar
 - Click the **Share** button in the route header
 - On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — [create one here](https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share). The token is saved in your browser's localStorage and never sent anywhere except GitHub
-- The track is simplified and saved as a public GitHub Gist; a popup appears with the link
-- Click **Copy** or select the link manually, then send it to anyone
+- The track is simplified and saved as a public GitHub Gist; a popup appears with the link and a QR code
+- Click **Copy** or select the link manually, then send it to anyone — or scan the QR code directly with a mobile device
 - The recipient opens the link and the route loads automatically — no token required to view
 - A banner prompts recipients to save the route to their local library
 
