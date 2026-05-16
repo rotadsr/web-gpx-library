@@ -27,6 +27,8 @@ const MapManager = (() => {
   let zoomEndHandler         = null;
   let heatClickHandler       = null;
   const HEAT_THRESHOLD       = 9;   // zoom ≤ this → show heatmap instead of polylines
+  let privacyZoneLayers      = [];
+  let _storedPrivacyZones    = [];
 
   // ── Tile layer catalogue ────────────────────────────────────────────────────
   // All sources: free, open, no API key required.
@@ -138,6 +140,10 @@ const MapManager = (() => {
       attributionControl: true,
     });
 
+    map.createPane('privacyPane');
+    map.getPane('privacyPane').style.zIndex = 401; // just above overlayPane(400), below markers(600)
+    map.getPane('privacyPane').style.pointerEvents = 'none';
+
     const layer = LAYERS.find(l => l.id === currentLayerKey);
     currentTile = L.tileLayer(layer.url, layer.opts).addTo(map);
 
@@ -145,6 +151,36 @@ const MapManager = (() => {
     map.on('click', e => {
       if (queryMode) handleQueryClick(e.latlng);
     });
+
+    if (_storedPrivacyZones.length) _renderPrivacyZones();
+  }
+
+  // ── Privacy zone circles ────────────────────────────────────────────────────
+
+  function updatePrivacyZones(zones) {
+    _storedPrivacyZones = zones;
+    if (!map) return;
+    _renderPrivacyZones();
+  }
+
+  function _renderPrivacyZones() {
+    privacyZoneLayers.forEach(l => { try { map.removeLayer(l); } catch (_) {} });
+    privacyZoneLayers = [];
+    for (const zone of _storedPrivacyZones) {
+      const circle = L.circle([zone.lat, zone.lon], {
+        pane: 'privacyPane',
+        radius: (zone.radius || 2) * 1000,
+        color: '#f59e0b',
+        fillColor: '#f59e0b',
+        fillOpacity: 0.13,
+        weight: 2,
+        dashArray: '6 4',
+        interactive: false,
+      }).addTo(map);
+      const label = zone.name ? zone.name.split(',')[0] : null;
+      if (label) circle.bindTooltip(label, { sticky: true, className: 'privacy-zone-tip' });
+      privacyZoneLayers.push(circle);
+    }
   }
 
   // ── Route rendering ─────────────────────────────────────────────────────────
@@ -168,6 +204,8 @@ const MapManager = (() => {
 
     // Hover dot — added to map only when chart is hovered
     hoverMarker = L.circleMarker(latlngs[0], { ...dot('#f59e0b'), radius: 7, zIndexOffset: 500 });
+
+    if (_storedPrivacyZones.length) _renderPrivacyZones();
   }
 
   function clearRoute() {
@@ -485,6 +523,7 @@ const MapManager = (() => {
     }
 
     updateOverviewDisplay();
+    if (_storedPrivacyZones.length) _renderPrivacyZones();
   }
 
   function clearOverview() {
@@ -683,5 +722,6 @@ const MapManager = (() => {
     getViewState,
     showOverview, clearOverview, selectOverviewRoute,
     showSkiForViewport, clearSkiResort,
+    updatePrivacyZones,
   };
 })();
