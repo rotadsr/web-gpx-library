@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GPX Library</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>" />
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css" />
@@ -206,10 +207,12 @@
               <span id="route-difficulty-badge" class="route-difficulty-badge" style="display:none"></span>
             </div>
             <div class="route-header-controls">
+              <button id="btn-trim-route" class="btn-share-route" title="Edit start/end points">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+              </button>
               <div class="btn-download-wrap">
-                <button id="btn-download-route" class="btn-share-route" title="Download GPX">
+                <button id="btn-download-route" class="btn-share-route" title="Download">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  <span>Download</span>
                 </button>
                 <div id="download-menu" class="download-menu" hidden>
                   <button class="download-menu-item" id="dl-full">Full track</button>
@@ -218,11 +221,10 @@
               </div>
               <button id="btn-send-to-gps" class="btn-share-route" title="Send to my GPS app">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
-                <span>Send to my GPS app</span>
               </button>
-              <button id="btn-share-route" class="btn-share-route" title="Copy share link to clipboard">
+              <button id="btn-share-route" class="btn-share-route" title="Share">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                <span id="btn-share-label">Share</span>
+                <span id="btn-share-label" style="display:none">Share</span>
               </button>
               <div class="unit-toggle" id="unit-toggle">
                 <span class="unit-label">Unit:</span>
@@ -358,6 +360,29 @@
   </div>
 </div>
 
+<!-- ── Share Trim Overlay ─────────────────────────────────────────────────── -->
+<div id="share-trim-overlay" class="privacy-picker-overlay" style="display:none">
+  <div class="share-trim-bar">
+    <div class="share-trim-row">
+      <div class="share-trim-title-group">
+        <span class="share-trim-title">Choose what to share</span>
+        <span id="share-trim-info" class="share-trim-info"></span>
+      </div>
+      <div class="share-trim-btns">
+        <button id="share-trim-full" class="share-change-token-btn">Share full route</button>
+        <button id="share-trim-cancel" class="share-change-token-btn">Cancel</button>
+        <button id="share-trim-confirm" class="share-copy-btn">Share trimmed</button>
+      </div>
+    </div>
+    <div class="share-trim-legend">
+      <span class="share-trim-legend-start">&#9679; New start</span>
+      <span class="share-trim-legend-end">&#9679; New end</span>
+      <span class="share-trim-hint">Drag the markers along the route to adjust the start and end points</span>
+    </div>
+  </div>
+  <div id="share-trim-map" class="privacy-picker-map"></div>
+</div>
+
 <!-- ── GPS QR Modal ─────────────────────────────────────────────────────── -->
 <div id="gps-qr-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="gps-qr-modal-title">
   <div class="share-dialog gps-qr-dialog">
@@ -424,6 +449,69 @@
   </div>
 </div>
 
+
+<!-- ── Privacy Zones Modal ───────────────────────────────────────────────── -->
+<div id="privacy-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="privacy-modal-title">
+  <div class="share-dialog privacy-dialog">
+    <div class="share-dialog-header">
+      <h3 id="privacy-modal-title">Privacy Zones</h3>
+      <button id="privacy-modal-close" class="share-close-btn" title="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">Track points within each zone's radius are removed when sharing a route. Add as many zones as you need.</p>
+
+    <div id="privacy-zones-list" class="privacy-zones-list"></div>
+
+    <div class="privacy-add-label">Add a zone</div>
+    <div class="privacy-search-row">
+      <input type="text" id="privacy-address-input" class="share-url-input" placeholder="Search address…" autocomplete="off" spellcheck="false" />
+      <button id="privacy-search-btn" class="share-copy-btn">Search</button>
+    </div>
+    <div class="privacy-options-row">
+      <button id="privacy-pick-btn" class="privacy-option-btn">Pick on map</button>
+      <button id="privacy-detect-btn" class="privacy-option-btn">Use my location</button>
+    </div>
+
+    <div id="privacy-pending" class="privacy-pending-zone" style="display:none">
+      <div class="privacy-pending-header">
+        <span class="privacy-location-icon">📍</span>
+        <span id="privacy-pending-name" class="privacy-pending-name"></span>
+      </div>
+      <div class="privacy-radius-row">
+        <span class="privacy-radius-label">Radius</span>
+        <input type="range" id="privacy-radius-slider" class="privacy-radius-slider" min="0.01" max="5" step="0.01" value="2" />
+        <span id="privacy-radius-value" class="privacy-radius-value" title="Click to type a value">2.0 km</span>
+        <input type="number" id="privacy-radius-input" class="privacy-radius-input" min="10" max="5000" step="10" style="display:none" />
+      </div>
+      <button id="privacy-add-btn" class="share-copy-btn privacy-add-btn">Add zone</button>
+    </div>
+
+    <p id="privacy-error" class="pat-error"></p>
+    <p class="pat-privacy-note">Zone locations are stored only in this browser and never sent anywhere.</p>
+  </div>
+</div>
+
+<!-- ── Map Picker Overlay ─────────────────────────────────────────────────── -->
+<div id="privacy-picker-overlay" class="privacy-picker-overlay" style="display:none">
+  <div class="privacy-picker-bar">
+    <span id="privacy-picker-hint" class="privacy-picker-hint">Click anywhere on the map to place a zone</span>
+    <div id="privacy-picker-search-row" class="privacy-search-row privacy-picker-search-row" style="display:none">
+      <input type="text" id="privacy-picker-address" class="share-url-input" placeholder="Search address to relocate…" autocomplete="off" spellcheck="false" />
+      <button id="privacy-picker-search-btn" class="share-copy-btn">Go</button>
+    </div>
+    <div class="privacy-radius-row privacy-picker-radius-row">
+      <span class="privacy-radius-label">Radius</span>
+      <input type="range" id="privacy-picker-radius" class="privacy-radius-slider" min="0.01" max="5" step="0.01" value="2" />
+      <span id="privacy-picker-radius-value" class="privacy-radius-value" title="Click to type a value">2.0 km</span>
+      <input type="number" id="privacy-picker-radius-input" class="privacy-radius-input" min="10" max="5000" step="10" style="display:none" />
+    </div>
+    <span id="privacy-picker-coords" class="privacy-picker-coords"></span>
+    <div class="privacy-picker-btns">
+      <button id="privacy-picker-cancel" class="share-change-token-btn">Cancel</button>
+      <button id="privacy-picker-confirm" class="share-copy-btn" disabled>Confirm</button>
+    </div>
+  </div>
+  <div id="privacy-picker-map" class="privacy-picker-map"></div>
+</div>
 
 <!-- ── GPS Send Landing Page ─────────────────────────────────────────────── -->
 <div id="gpx-send-screen" style="display:none" aria-live="polite">
