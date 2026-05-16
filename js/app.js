@@ -1712,8 +1712,9 @@
     });
     if (resp.status === 401) throw new Error('token_rejected');
     if (!resp.ok) throw new Error('Gist creation failed (' + resp.status + ')');
-    const data = await resp.json();
-    return data.id;
+    const data   = await resp.json();
+    const rawUrl = data.files?.['route.gpx']?.raw_url || null;
+    return { id: data.id, rawUrl };
   }
 
   // ── Download ──────────────────────────────────────────────────────────────────
@@ -1767,11 +1768,11 @@
         ? `Track simplified from ${origCount.toLocaleString()} to ${newCount.toLocaleString()} points for sharing.`
         : null;
 
-      const routeName = document.getElementById('route-name').textContent || 'Shared Route';
-      const gistId    = await createGist(gpxToShare, routeName);
-      const shareUrl  = window.location.origin + window.location.pathname + '?gist=' + gistId;
+      const routeName      = document.getElementById('route-name').textContent || 'Shared Route';
+      const { id, rawUrl } = await createGist(gpxToShare, routeName);
+      const shareUrl       = window.location.origin + window.location.pathname + '?gist=' + id;
 
-      openShareModal(shareUrl, simplifyInfo);
+      openShareModal(shareUrl, simplifyInfo, rawUrl);
 
     } catch (err) {
       if (err.message === 'token_rejected' || err.message === 'no_pat') {
@@ -1828,12 +1829,13 @@
     }
   }
 
-  function openShareModal(url, simplifyInfo) {
-    const modal   = document.getElementById('share-modal');
-    const input   = document.getElementById('share-url-input');
-    const copyBtn = document.getElementById('share-copy-btn');
-    const info    = document.getElementById('share-simplify-info');
-    const qrEl    = document.getElementById('share-qr');
+  function openShareModal(url, simplifyInfo, rawUrl) {
+    const modal    = document.getElementById('share-modal');
+    const input    = document.getElementById('share-url-input');
+    const copyBtn  = document.getElementById('share-copy-btn');
+    const info     = document.getElementById('share-simplify-info');
+    const qrEl     = document.getElementById('share-qr');
+    const qrLabel  = document.querySelector('.share-qr-label');
 
     input.value = url;
     copyBtn.textContent = 'Copy';
@@ -1846,16 +1848,20 @@
       info.style.display = 'none';
     }
 
-    // Generate QR code
+    // QR points to raw GPX file so iOS shows "Open with" for GPS apps
+    const qrTarget = rawUrl || url;
     qrEl.innerHTML = '';
     new QRCode(qrEl, {
-      text:           url,
-      width:          160,
-      height:         160,
-      colorDark:      '#000000',
-      colorLight:     '#ffffff',
-      correctLevel:   QRCode.CorrectLevel.M,
+      text:         qrTarget,
+      width:        160,
+      height:       160,
+      colorDark:    '#000000',
+      colorLight:   '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M,
     });
+    qrLabel.textContent = rawUrl
+      ? 'Scan to open the GPX file on your phone'
+      : 'Scan to open on mobile';
 
     modal.style.display = 'flex';
     setTimeout(() => { input.focus(); input.select(); }, 50);
