@@ -48,12 +48,11 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Download button** in the route header — choose between two options:
   - **Full track** — downloads the original GPX file as-is
   - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
-- **Send GPX file button** — on mobile browsers that support the Web Share API (iOS Safari, Chrome for Android), triggers the native share sheet so you can open the full GPX directly in any installed app: Garmin Connect, Coros, Wahoo, Komoot, and others. The button is hidden on desktop browsers where file sharing is not supported.
+- **Send to my GPS app button** — uploads the full GPX to a GitHub Gist and displays a QR code; scan it with your phone and iOS/Android will prompt you to open the file with an installed GPS app (Garmin Connect, Coros, Wahoo, Komoot, etc.). Requires a GitHub PAT with the `gist` scope.
 
 ### 🔗 Route Sharing
-- **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a link is shown in a popup
+- **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a share link is shown in a popup
 - Copy the link with the **Copy** button or select it manually — no clipboard permission required
-- **QR code** is displayed alongside the link — scan it with a mobile device to open the route instantly, no typing required
 - Recipients open the link and the route loads automatically — no account or token needed to view
 - Shared routes appear in the **Uploaded Routes** section with a banner prompting the recipient to save
 - Sharers need a one-time GitHub Personal Access Token (PAT) with the `gist` scope — stored only in their browser
@@ -70,7 +69,8 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 4. **Edit metadata** inline — pencil icons next to name, description, and author
 5. **Download** the full or simplified track at any time
 6. **Share** a link directly — no file attachments needed
-7. **Export** for backup, or enable auto-backup to a private GitHub repository
+7. **Send to my GPS app** — scan the QR code with your phone to open the GPX file directly in Garmin Connect, Coros, or any other GPS app
+8. **Export** for backup, or enable auto-backup to a private GitHub repository
 
 ## How to Use
 
@@ -109,8 +109,8 @@ Two options are available under **"···"** → **Import** in the library heade
 - Load any route from the sidebar
 - Click the **Share** button in the route header
 - On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — [create one here](https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share). The token is saved in your browser's localStorage and never sent anywhere except GitHub
-- The track is simplified and saved as a public GitHub Gist; a popup appears with the link and a QR code
-- Click **Copy** or select the link manually, then send it to anyone — or scan the QR code directly with a mobile device
+- The track is simplified and saved as a public GitHub Gist; a popup appears with the share link
+- Click **Copy** or select the link manually, then send it to anyone
 - The recipient opens the link and the route loads automatically — no token required to view
 - A banner prompts recipients to save the route to their local library
 
