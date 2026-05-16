@@ -130,8 +130,8 @@ Two options are available under **"···"** → **Import** in the library heade
 
 ### Auto-Backup to GitHub
 - Click **"···"** → **Backup settings** in the library header
-- Enter a repository name in `username/repo-name` format (the repo must already exist; make it private to keep routes confidential)
-- Your token needs both `repo` and `gist` scopes — a link in the dialog opens GitHub's token creation page with the right scopes pre-filled
+- Enter a **repository name** (`username/repo-name`) and a **GitHub Personal Access Token** — both fields are validated inline before saving
+- Your token needs both `repo` and `gist` scopes — a link in the dialog opens GitHub's token creation page with the right scopes pre-filled. Accepted token formats: `ghp_…`, `github_pat_…`, `ghs_…`, `ghu_…`, `ghr_…`
 - Once saved, the library is automatically pushed as `gpx-library.json` to that repository 30 seconds after any change
 - The sidebar shows a live status: **Backup in 30s…** → **Backing up…** → **✓ Backed up just now**
 - Use **"···"** → **Back up now** to trigger an immediate backup at any time
