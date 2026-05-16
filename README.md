@@ -48,7 +48,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Download button** in the route header — choose between two options:
   - **Full track** — downloads the original GPX file as-is
   - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
-- **Send to my GPS app button** — uploads the full GPX to a GitHub Gist and displays a QR code; scan it with your phone and iOS/Android will prompt you to open the file with an installed GPS app (Garmin Connect, Coros, Wahoo, Komoot, etc.). Requires a GitHub PAT with the `gist` scope.
+- **Send to my GPS app** — desktop-to-phone workflow: uploads the full GPX to a GitHub Gist and shows a QR code. Scan it on your phone; a dedicated landing page opens with a single "Open GPX file" button. Tapping it downloads the file with the correct `application/gpx+xml` MIME type, so iOS and Android present the native "Open with" sheet — Garmin Connect, Coros, GPX Viewer, Wahoo, Komoot, and any other installed GPS app will appear. Requires a GitHub PAT with the `gist` scope.
 
 ### 🔗 Route Sharing
 - **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a share link is shown in a popup
@@ -117,6 +117,17 @@ Two options are available under **"···"** → **Import** in the library heade
 > **Note:** Shared links are backed by [GitHub Gist](https://gist.github.com/), which stores them permanently (until the Gist owner deletes them). Recipients should still save shared routes to their local library to ensure long-term access.
 
 > **Track simplification:** Before sharing, the track is automatically de-spiked (GPS outliers removed) and simplified using the Ramer-Douglas-Peucker algorithm. Short routes (<10 km) are capped at 1,500 points; long routes (>20 km) at 4,000 points. The original route in your library is never modified.
+
+### Send to my GPS app
+1. Load any route from the sidebar
+2. Click **"Send to my GPS app"** in the route header
+3. On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — the same token used for sharing
+4. The full GPX is uploaded to a GitHub Gist and a QR code appears in a popup
+5. Scan the QR code with your phone — a lightweight landing page opens
+6. Tap **"Open GPX file"** — the file is delivered with the correct MIME type and iOS/Android will show the native "Open with" sheet
+7. Select your GPS app (Garmin Connect, Coros, GPX Viewer, etc.)
+
+> **Why a button tap instead of auto-open?** iOS and Android block automatic file downloads without a user gesture. The button tap is required to trigger the "Open with" sheet.
 
 ### Edit Route Metadata
 - With any route loaded, hover over the **route name** or **description** in the details panel to reveal a pencil icon — click to edit in place
