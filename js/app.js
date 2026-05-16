@@ -2014,29 +2014,41 @@
     }
 
     btn.addEventListener('click', async () => {
-      btn.disabled       = true;
-      btn.textContent    = 'Opening…';
-      errEl.textContent  = '';
+      btn.disabled      = true;
+      btn.textContent   = 'Opening…';
+      errEl.textContent = '';
       try {
         const gpxResp = await fetch(rawUrl);
         if (!gpxResp.ok) throw new Error('Could not fetch GPX file (' + gpxResp.status + ')');
         const gpxText = await gpxResp.text();
+        const file    = new File([gpxText], gpxName, { type: 'application/gpx+xml' });
 
-        const blob = new Blob([gpxText], { type: 'application/gpx+xml' });
-        const url  = URL.createObjectURL(blob);
-        const a    = document.createElement('a');
-        a.href     = url;
-        a.download = gpxName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        // Web Share API (iOS/Android) — opens the native share sheet directly,
+        // skipping the Downloads folder
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: gpxName.replace(/\.gpx$/i, '') });
+        } else {
+          // Desktop fallback: trigger a standard download
+          const url = URL.createObjectURL(file);
+          const a   = document.createElement('a');
+          a.href     = url;
+          a.download = gpxName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
 
         btn.textContent = 'Opened ✓';
       } catch (err) {
-        errEl.textContent = 'Error: ' + err.message;
-        btn.disabled      = false;
-        btn.textContent   = 'Open GPX file';
+        if (err.name === 'AbortError') {
+          // User dismissed the share sheet — that's fine
+          btn.textContent = 'Open GPX file';
+        } else {
+          errEl.textContent = 'Error: ' + err.message;
+          btn.textContent   = 'Open GPX file';
+        }
+        btn.disabled = false;
       }
     });
   }
