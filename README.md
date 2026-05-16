@@ -48,7 +48,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Download button** in the route header — choose between two options:
   - **Full track** — downloads the original GPX file as-is
   - **Simplified track** — de-spiked and RDP-simplified version (same process as sharing); smaller file, cleaner geometry
-- **Send to my GPS app** — desktop-to-phone workflow: uploads the full GPX to a GitHub Gist and shows a QR code. Scan it on your phone; a dedicated landing page opens with a single "Open GPX file" button. Tapping it downloads the file with the correct `application/gpx+xml` MIME type, so iOS and Android present the native "Open with" sheet — Garmin Connect, Coros, GPX Viewer, Wahoo, Komoot, and any other installed GPS app will appear. Requires a GitHub PAT with the `gist` scope.
+- **Send to my GPS app** — desktop-to-phone workflow: uploads the full GPX to a GitHub Gist and shows a QR code. Scan it on your phone; a dedicated landing page opens with a single "Open GPX file" button. On **Android**, tapping it triggers the native share sheet so you can open it directly in any GPS app. On **iPhone**, the file downloads to Safari's Downloads folder — tap the file there and choose **Open in…** to send it to Garmin Connect, Coros, GPX Viewer, or any other GPS app. Requires a GitHub PAT with the `gist` scope.
 
 ### 🔗 Route Sharing
 - **Share button** in the route header — track is automatically simplified, saved as a GitHub Gist, and a share link is shown in a popup
@@ -69,7 +69,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 4. **Edit metadata** inline — pencil icons next to name, description, and author
 5. **Download** the full or simplified track at any time
 6. **Share** a link directly — no file attachments needed
-7. **Send to my GPS app** — scan the QR code with your phone to open the GPX file directly in Garmin Connect, Coros, or any other GPS app
+7. **Send to my GPS app** — scan the QR code with your phone; on Android the GPS app picker opens directly, on iPhone download the file and use **Open in…** to send it to Garmin Connect, Coros, or any other GPS app
 8. **Export** for backup, or enable auto-backup to a private GitHub repository
 
 ## How to Use
@@ -124,10 +124,11 @@ Two options are available under **"···"** → **Import** in the library heade
 3. On first use, a prompt asks for a GitHub Personal Access Token (PAT) with the `gist` scope — the same token used for sharing
 4. The full GPX is uploaded to a GitHub Gist and a QR code appears in a popup
 5. Scan the QR code with your phone — a lightweight landing page opens
-6. Tap **"Open GPX file"** — the file is delivered with the correct MIME type and iOS/Android will show the native "Open with" sheet
-7. Select your GPS app (Garmin Connect, Coros, GPX Viewer, etc.)
+6. Tap **"Open GPX file"** to download the GPX file
+7. **Android**: the system share sheet opens immediately — select your GPS app (Garmin Connect, Coros, GPX Viewer, etc.)
+8. **iPhone / iPad**: the file downloads to the Safari Downloads folder. Tap the download indicator (⬇) in the Safari toolbar, tap the file, then tap **Open in…** and choose your GPS app
 
-> **Why a button tap instead of auto-open?** iOS and Android block automatic file downloads without a user gesture. The button tap is required to trigger the "Open with" sheet.
+> **Why the extra step on iPhone?** iOS Safari does not support the Web Share API for GPX files (`application/gpx+xml` is not in its file type allowlist), so the file must be downloaded first. The Downloads → Open In flow is the standard iOS way to hand a file off to a third-party app. On Android, the share sheet handles this in one tap.
 
 ### Edit Route Metadata
 - With any route loaded, hover over the **route name** or **description** in the details panel to reveal a pencil icon — click to edit in place
@@ -165,6 +166,7 @@ Two options are available under **"···"** → **Import** in the library heade
 - **Heatmap**: [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat) for overview density view
 - **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
+- **QR codes**: [QRCode.js](https://github.com/davidshimjs/qrcodejs) — client-side QR generation for the "Send to my GPS app" flow
 - **Storage**: Browser IndexedDB (client-side, no server)
 - **APIs**:
   - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
