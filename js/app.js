@@ -6,7 +6,7 @@
 (function () {
 
   // ── Deploy metadata ──────────────────────────────────────────────────────────
-  const DEPLOY_DATE   = 'May 16 2026'; // update this string on each deploy. Format must be `date +'%B %-d %Y'`
+  const DEPLOY_DATE   = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const GITHUB_REPO   = 'https://github.com/rotadsr/web-gpx-library';
 
   // ── Module state ─────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@
     const latest = new Date(dates.reduce((a, b) => (a > b ? a : b)));
     if (isNaN(latest.getTime())) return;
     document.getElementById('deploy-date').textContent =
-      latest.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      latest.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   }
 
   async function init() {
