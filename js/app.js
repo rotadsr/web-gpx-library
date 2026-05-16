@@ -6,7 +6,7 @@
 (function () {
 
   // ── Deploy metadata ──────────────────────────────────────────────────────────
-  const DEPLOY_DATE   = 'May 2026'; // update this string on each deploy
+  const DEPLOY_DATE   = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   const GITHUB_REPO   = 'https://github.com/rotadsr/web-gpx-library';
 
   // ── Module state ─────────────────────────────────────────────────────────────
@@ -146,6 +146,15 @@
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
+  function refreshLibraryDate() {
+    const dates = savedRoutes.map(r => r.updatedAt).filter(Boolean);
+    if (!dates.length) return;
+    const latest = new Date(dates.reduce((a, b) => (a > b ? a : b)));
+    if (isNaN(latest.getTime())) return;
+    document.getElementById('deploy-date').textContent =
+      latest.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  }
+
   async function init() {
     setupUploadZone();
     setupExportImport();
@@ -162,6 +171,7 @@
     buildCategoryPills();
     renderFileTree();
     updateBackupStatus('idle');
+    refreshLibraryDate();
 
     checkSharedGistParam();
 
@@ -498,6 +508,83 @@
   /** Called by the editor when the user clicks "Save to Library". */
   // ── Inline field editing ──────────────────────────────────────────────────────
 
+  function bakeOverrideDurationIntoGpx(gpxText, durationSeconds) {
+    if (!gpxText || !durationSeconds) return gpxText;
+    const doc   = new DOMParser().parseFromString(gpxText, 'text/xml');
+    const gpxNs = 'http://www.topografix.com/GPX/1/1';
+    const ns    = doc.documentElement.namespaceURI || '';
+
+    function getTrkpts() {
+      const byNs = doc.getElementsByTagNameNS(gpxNs, 'trkpt');
+      return Array.from(byNs.length ? byNs : doc.getElementsByTagName('trkpt'));
+    }
+    function getTimeEl(trkpt) {
+      return trkpt.getElementsByTagNameNS(gpxNs, 'time')[0]
+          || trkpt.getElementsByTagName('time')[0]
+          || null;
+    }
+
+    const trkpts = getTrkpts();
+    if (trkpts.length < 2) return gpxText;
+
+    const existingTimes = trkpts.map(el => {
+      const t = getTimeEl(el);
+      return t ? new Date(t.textContent) : null;
+    });
+    const hasTimestamps = existingTimes.every(t => t && !isNaN(t.getTime()));
+
+    // Haversine in metres
+    function hav(lat1, lon1, lat2, lon2) {
+      const R = 6371000, r = Math.PI / 180;
+      const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+      const a = Math.sin(dLat / 2) ** 2
+              + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // Cumulative distances for proportional distribution
+    const lats = trkpts.map(el => parseFloat(el.getAttribute('lat')));
+    const lons = trkpts.map(el => parseFloat(el.getAttribute('lon')));
+    const cumDist = [0];
+    for (let i = 1; i < trkpts.length; i++)
+      cumDist.push(cumDist[i - 1] + hav(lats[i - 1], lons[i - 1], lats[i], lons[i]));
+    const totalDist = cumDist[cumDist.length - 1];
+
+    const durationMs = durationSeconds * 1000;
+    // Anchor: use first existing timestamp if available, otherwise "now − duration"
+    const startMs = hasTimestamps
+      ? existingTimes[0].getTime()
+      : Date.now() - durationMs;
+    const origSpanMs = hasTimestamps
+      ? existingTimes[existingTimes.length - 1].getTime() - existingTimes[0].getTime()
+      : 0;
+
+    for (let i = 0; i < trkpts.length; i++) {
+      let offsetMs;
+      if (hasTimestamps && origSpanMs > 0) {
+        // Preserve relative timing, just rescale to new total duration
+        offsetMs = Math.round(
+          (existingTimes[i].getTime() - existingTimes[0].getTime()) * durationMs / origSpanMs
+        );
+      } else {
+        // No timestamps (or zero-span): distribute proportionally by distance
+        offsetMs = totalDist > 0
+          ? Math.round((cumDist[i] / totalDist) * durationMs)
+          : Math.round((i / (trkpts.length - 1)) * durationMs);
+      }
+
+      const iso = new Date(startMs + offsetMs).toISOString();
+      let timeEl = getTimeEl(trkpts[i]);
+      if (!timeEl) {
+        timeEl = ns ? doc.createElementNS(ns, 'time') : doc.createElement('time');
+        trkpts[i].insertBefore(timeEl, trkpts[i].firstChild);
+      }
+      timeEl.textContent = iso;
+    }
+
+    return new XMLSerializer().serializeToString(doc);
+  }
+
   function patchGpxMeta(gpxText, patches) {
     if (!gpxText) return gpxText;
     const doc  = new DOMParser().parseFromString(gpxText, 'text/xml');
@@ -567,6 +654,7 @@
         await Storage.saveRoute({ ...route });
         const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
         if (idx >= 0) savedRoutes[idx] = route;
+        refreshLibraryDate();
       } catch (err) {
         console.error('saveRouteField error:', err);
         showShareToast('Could not save: ' + err.message);
@@ -580,6 +668,25 @@
     backupNeeded = true;
     scheduleBackup();
     if (field === 'name') renderFileTree();
+  }
+
+  async function saveOverrideDuration() {
+    const route = savedRoutes.find(r => r.id === activeRouteId)
+                || uploadedRoutes.find(r => r.id === activeRouteId);
+    if (!route) return;
+    route.overrideDuration = overrideDuration;
+    if (route.source === 'saved') {
+      try {
+        await Storage.saveRoute({ ...route });
+        const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
+        if (idx >= 0) savedRoutes[idx] = route;
+        backupNeeded = true;
+        scheduleBackup();
+        refreshLibraryDate();
+      } catch (err) {
+        console.error('saveOverrideDuration error:', err);
+      }
+    }
   }
 
   function startContentEdit(displayEl, currentValue, multiline, onSave) {
@@ -2087,11 +2194,14 @@
 
   // ── Stats display ─────────────────────────────────────────────────────────────
 
-  // Called once per route load; stores state and resets any pace override.
+  // Called once per route load; stores state and restores any saved pace override.
   function renderStats(meta, stats) {
     currentMeta      = meta;
     currentStats     = stats;
-    overrideDuration = null;
+    const _activeRoute = savedRoutes.find(r => r.id === activeRouteId)
+                       || uploadedRoutes.find(r => r.id === activeRouteId);
+    overrideDuration = (_activeRoute && _activeRoute.overrideDuration != null)
+      ? _activeRoute.overrideDuration : null;
     chartMode        = 'elevation';
     document.querySelectorAll('.chart-mode-btn').forEach(b =>
       b.classList.toggle('is-active', b.dataset.mode === 'elevation')
@@ -2183,7 +2293,7 @@
           if (parsed && parsed > 0) {
             overrideDuration = parsed;
             updateStatDisplay();
-            // Refresh chart axes — duration doesn't affect X axis, no need to re-render
+            saveOverrideDuration();
           }
         }
       );
@@ -2211,14 +2321,54 @@
           if (!currentStats.totalDistance || !speedKmh) return;
           overrideDuration = (currentStats.totalDistance / speedKmh) * 3600;
           updateStatDisplay();
+          saveOverrideDuration();
         }
       );
+    });
+
+    // Override values button — bake the current override into the GPX timestamps
+    document.getElementById('bake-override-btn').addEventListener('click', async () => {
+      if (!overrideDuration || !activeRouteId) return;
+      const route = savedRoutes.find(r => r.id === activeRouteId)
+                  || uploadedRoutes.find(r => r.id === activeRouteId);
+      if (!route) return;
+
+      const bakedGpx = bakeOverrideDurationIntoGpx(route.gpxText || currentGpxText, overrideDuration);
+      route.gpxText        = bakedGpx;
+      route._parsed        = null;
+      route.overrideDuration = null;
+      currentGpxText       = bakedGpx;
+
+      // Re-parse so currentStats reflects the baked timestamps
+      const parsed     = GPXParser.parse(bakedGpx);
+      route._parsed    = parsed;
+      currentStats     = parsed.stats;
+      currentPoints    = parsed.points;
+      overrideDuration = null;
+
+      if (route.source === 'saved') {
+        try {
+          await Storage.saveRoute({ ...route });
+          const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
+          if (idx >= 0) savedRoutes[idx] = route;
+          backupNeeded = true;
+          scheduleBackup();
+          refreshLibraryDate();
+        } catch (err) {
+          console.error('bake override error:', err);
+          showShareToast('Could not save: ' + err.message);
+          return;
+        }
+      }
+
+      updateStatDisplay();
     });
 
     // Reset button
     document.getElementById('reset-override-btn').addEventListener('click', () => {
       overrideDuration = null;
       updateStatDisplay();
+      saveOverrideDuration();
     });
   }
 

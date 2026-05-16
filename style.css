@@ -948,17 +948,29 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   font-size: 12px;
   color: #92400e;
 }
-#reset-override-btn {
-  background: none;
-  border: 1px solid #f59e0b;
+#override-bar-buttons {
+  display: flex;
+  gap: 6px;
+}
+#reset-override-btn, #bake-override-btn {
   border-radius: 4px;
   padding: 2px 9px;
   font-size: 11px;
-  color: #b45309;
   cursor: pointer;
   transition: all 0.15s;
 }
+#reset-override-btn {
+  background: none;
+  border: 1px solid #f59e0b;
+  color: #b45309;
+}
 #reset-override-btn:hover { background: #f59e0b; color: #fff; }
+#bake-override-btn {
+  background: none;
+  border: 1px solid #16a34a;
+  color: #15803d;
+}
+#bake-override-btn:hover { background: #16a34a; color: #fff; }
 
 /* ── Weather forecast ───────────────────────────────────────────────────────── */
 #weather-section { flex-shrink: 0; }
