@@ -21,6 +21,8 @@
   let sharedRouteRef  = null;  // route object loaded from a ?gist= share URL
   let sortMode        = 'alpha-asc'; // 'default'|'alpha-asc'|'alpha-desc'|'newest'|'oldest'|'activity'|'diff-asc'|'diff-desc'
   let overviewMode    = false;
+  let bulkExportMode      = false;
+  let bulkExportSelection = new Set(); // route ids selected for bulk GPX export
   let difficultyCache = {}; // id → 'easy'|'moderate'|'hard'|'expert'|null
   let locationCache   = {}; // id → lowercase search string (city county state country)
   try { difficultyCache = JSON.parse(localStorage.getItem('gpx-diff-cache') || '{}'); } catch (_) {}
@@ -290,7 +292,8 @@
       addDivider();
       addItem('⬆  Import from file…', () => document.getElementById('import-lib-input').click());
       addItem('⬆  Import from GitHub…', openGhImportModal);
-      addItem('⬇  Export', doExport);
+      addItem('⬇  Export Library', doExport);
+      addItem('⬇  Bulk export GPX', startBulkExport);
       addDivider();
       if (getBackupRepo() && getPat()) {
         addItem('☁  Back up now', pushLibraryBackup);
@@ -1274,6 +1277,7 @@
   function buildRouteItem(route) {
     const li = document.createElement('li');
     li.className = 'route-item' + (route.id === activeRouteId ? ' active' : '');
+    if (bulkExportMode && bulkExportSelection.has(String(route.id))) li.className += ' bulk-selected';
     li.dataset.id = route.id;
     const icon   = route.activity ? getActivityEmoji(route.activity) : getFolderIcon(route.folder);
     const actTip = route.activity
@@ -1288,53 +1292,75 @@
         </div>
       </span>`;
 
+    if (bulkExportMode) {
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'route-select-cb';
+      cb.checked = bulkExportSelection.has(String(route.id));
+      cb.addEventListener('click', e => e.stopPropagation());
+      cb.addEventListener('change', () => toggleBulkExportSelection(route.id, li, cb));
+      li.insertBefore(cb, li.firstChild);
+    }
+
     const actions = document.createElement('div');
     actions.className = 'route-actions';
 
-    // Yellow save button — uploaded routes only
-    if (route.source === 'upload') {
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'route-action-btn btn-route-save';
-      saveBtn.title = 'Save to My Library';
-      saveBtn.innerHTML = SVG_SAVE;
-      saveBtn.addEventListener('click', e => { e.stopPropagation(); saveUploadToLibrary(route); });
-      actions.appendChild(saveBtn);
-    }
+    if (!bulkExportMode) {
+      // Yellow save button — uploaded routes only
+      if (route.source === 'upload') {
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'route-action-btn btn-route-save';
+        saveBtn.title = 'Save to My Library';
+        saveBtn.innerHTML = SVG_SAVE;
+        saveBtn.addEventListener('click', e => { e.stopPropagation(); saveUploadToLibrary(route); });
+        actions.appendChild(saveBtn);
+      }
 
-    // Blue move-to-folder button — saved routes only
-    if (route.source === 'saved') {
-      const moveBtn = document.createElement('button');
-      moveBtn.className = 'route-action-btn btn-route-move';
-      moveBtn.title = 'Move to folder';
-      moveBtn.innerHTML = SVG_MOVE_FOLDER;
-      moveBtn.addEventListener('click', e => { e.stopPropagation(); showFolderPicker(moveBtn, route); });
-      actions.appendChild(moveBtn);
-    }
+      // Blue move-to-folder button — saved routes only
+      if (route.source === 'saved') {
+        const moveBtn = document.createElement('button');
+        moveBtn.className = 'route-action-btn btn-route-move';
+        moveBtn.title = 'Move to folder';
+        moveBtn.innerHTML = SVG_MOVE_FOLDER;
+        moveBtn.addEventListener('click', e => { e.stopPropagation(); showFolderPicker(moveBtn, route); });
+        actions.appendChild(moveBtn);
+      }
 
-    // Red delete button — saved library routes; uploaded routes use their own remove
-    if (route.source === 'saved') {
-      const trashBtn = document.createElement('button');
-      trashBtn.className = 'route-action-btn btn-route-remove';
-      trashBtn.title = 'Remove from library';
-      trashBtn.innerHTML = SVG_TRASH;
-      armDeleteBtn(trashBtn, () => deleteFromLibrary(route.id));
-      actions.appendChild(trashBtn);
-    } else if (route.source === 'upload') {
-      const trashBtn = document.createElement('button');
-      trashBtn.className = 'route-action-btn btn-route-remove';
-      trashBtn.title = 'Remove upload';
-      trashBtn.innerHTML = SVG_TRASH;
-      armDeleteBtn(trashBtn, () => removeUpload(route.id));
-      actions.appendChild(trashBtn);
+      // Red delete button — saved library routes; uploaded routes use their own remove
+      if (route.source === 'saved') {
+        const trashBtn = document.createElement('button');
+        trashBtn.className = 'route-action-btn btn-route-remove';
+        trashBtn.title = 'Remove from library';
+        trashBtn.innerHTML = SVG_TRASH;
+        armDeleteBtn(trashBtn, () => deleteFromLibrary(route.id));
+        actions.appendChild(trashBtn);
+      } else if (route.source === 'upload') {
+        const trashBtn = document.createElement('button');
+        trashBtn.className = 'route-action-btn btn-route-remove';
+        trashBtn.title = 'Remove upload';
+        trashBtn.innerHTML = SVG_TRASH;
+        armDeleteBtn(trashBtn, () => removeUpload(route.id));
+        actions.appendChild(trashBtn);
+      }
     }
 
     li.querySelector('.route-icon').addEventListener('click', e => {
       e.stopPropagation();
-      showActivityPicker(e.currentTarget, route);
+      if (bulkExportMode) {
+        toggleBulkExportSelection(route.id, li);
+      } else {
+        showActivityPicker(e.currentTarget, route);
+      }
     });
 
     li.appendChild(actions);
-    li.addEventListener('click', () => loadRoute(route, li));
+    li.addEventListener('click', () => {
+      if (bulkExportMode) {
+        toggleBulkExportSelection(route.id, li);
+      } else {
+        loadRoute(route, li);
+      }
+    });
     return li;
   }
 
@@ -2206,6 +2232,10 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   function downloadGpx(gpxText, suffix) {
     const route = savedRoutes.find(r => r.id === activeRouteId)
                || uploadedRoutes.find(r => r.id === activeRouteId);
+    downloadGpxForRoute(route, gpxText, suffix);
+  }
+
+  function downloadGpxForRoute(route, gpxText, suffix) {
     const baseName = (route?.name || 'track').replace(/[^a-z0-9_\-]/gi, '_');
     const filename = suffix ? `${baseName}_${suffix}.gpx` : `${baseName}.gpx`;
     const blob = new Blob([gpxText], { type: 'application/gpx+xml' });
@@ -2215,6 +2245,92 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // ── Bulk export GPX ──────────────────────────────────────────────────────────
+
+  function startBulkExport() {
+    bulkExportMode = true;
+    bulkExportSelection.clear();
+    document.getElementById('library-header').style.display   = 'none';
+    document.getElementById('bulk-export-bar').style.display   = '';
+    updateBulkExportBar();
+    renderFileTree();
+  }
+
+  function cancelBulkExport() {
+    bulkExportMode = false;
+    bulkExportSelection.clear();
+    document.getElementById('library-header').style.display   = '';
+    document.getElementById('bulk-export-bar').style.display   = 'none';
+    renderFileTree();
+  }
+
+  function toggleBulkExportSelection(routeId, li, cb) {
+    const id = String(routeId);
+    if (bulkExportSelection.has(id)) {
+      bulkExportSelection.delete(id);
+      li.classList.remove('bulk-selected');
+      if (cb) cb.checked = false;
+    } else {
+      bulkExportSelection.add(id);
+      li.classList.add('bulk-selected');
+      if (cb) cb.checked = true;
+    }
+    if (!cb) {
+      const boxEl = li.querySelector('.route-select-cb');
+      if (boxEl) boxEl.checked = bulkExportSelection.has(id);
+    }
+    updateBulkExportBar();
+  }
+
+  function updateBulkExportBar() {
+    const count = bulkExportSelection.size;
+    const label = document.getElementById('bulk-export-count');
+    if (label) label.textContent = count === 1 ? '1 route selected' : `${count} routes selected`;
+    const dlBtn = document.getElementById('btn-bulk-export-download');
+    if (dlBtn) dlBtn.disabled = count === 0;
+    const selectAllCb = document.getElementById('bulk-export-select-all');
+    if (selectAllCb) {
+      const totalVisible = document.querySelectorAll('#file-tree .route-item').length;
+      selectAllCb.checked = totalVisible > 0 && count === totalVisible;
+    }
+  }
+
+  function bulkExportSelectAll(checked) {
+    const visibleIds = Array.from(document.querySelectorAll('#file-tree .route-item')).map(li => li.dataset.id);
+    if (checked) {
+      visibleIds.forEach(id => bulkExportSelection.add(id));
+    } else {
+      visibleIds.forEach(id => bulkExportSelection.delete(id));
+    }
+    renderFileTree();
+    updateBulkExportBar();
+  }
+
+  async function resolveRouteGpxText(route) {
+    if (route.gpxText) return route.gpxText;
+    const resp = await fetch(route.file);
+    if (!resp.ok) throw new Error('Failed to load ' + route.file);
+    return resp.text();
+  }
+
+  async function exportSelectedRoutesAsGpx() {
+    const ids = Array.from(bulkExportSelection);
+    if (!ids.length) return;
+    const all = [...savedRoutes, ...uploadedRoutes];
+    const routes = ids.map(id => all.find(r => String(r.id) === id)).filter(Boolean);
+    for (let i = 0; i < routes.length; i++) {
+      const route = routes[i];
+      try {
+        const gpxText = await resolveRouteGpxText(route);
+        downloadGpxForRoute(route, gpxText);
+      } catch (err) {
+        console.error('Bulk export failed for', route.name, err);
+      }
+      if (i < routes.length - 1) await new Promise(r => setTimeout(r, 300));
+    }
+    cancelBulkExport();
   }
 
   // ── Share trim picker ────────────────────────────────────────────────────────
@@ -2427,6 +2543,107 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const trackPoints = parseTrackPoints(currentGpxText);
     if (!trackPoints.length) return;
     openShareTrimPicker(trackPoints, 0, trackPoints.length - 1, 'edit');
+  }
+
+  function reverseGpxTrack(gpxText) {
+    if (!gpxText) return gpxText;
+    const doc   = new DOMParser().parseFromString(gpxText, 'application/xml');
+    const ns    = 'http://www.topografix.com/GPX/1/1';
+
+    let segments = Array.from(doc.getElementsByTagNameNS(ns, 'trkseg'));
+    if (!segments.length) segments = Array.from(doc.getElementsByTagName('trkseg'));
+    if (!segments.length) return gpxText;
+
+    segments.forEach(seg => {
+      let pts = Array.from(seg.getElementsByTagNameNS(ns, 'trkpt'));
+      if (!pts.length) pts = Array.from(seg.getElementsByTagName('trkpt'));
+      pts.forEach(el => {
+        const timeEl = el.getElementsByTagNameNS(ns, 'time')[0] || el.getElementsByTagName('time')[0];
+        if (timeEl) timeEl.parentNode.removeChild(timeEl);
+      });
+      for (let i = pts.length - 1; i >= 0; i--) seg.appendChild(pts[i]);
+    });
+
+    const parent = segments[0].parentNode;
+    for (let i = segments.length - 1; i >= 0; i--) parent.appendChild(segments[i]);
+
+    return new XMLSerializer().serializeToString(doc);
+  }
+
+  async function applyRouteReversal() {
+    const route = savedRoutes.find(r => r.id === activeRouteId)
+                || uploadedRoutes.find(r => r.id === activeRouteId);
+    if (!route || !currentGpxText) return;
+
+    const reversed = reverseGpxTrack(currentGpxText);
+    route.gpxText  = reversed;
+    route._parsed  = null;
+    route.reversed = !route.reversed;
+    currentGpxText = reversed;
+
+    if (route.source === 'saved') {
+      try {
+        await Storage.saveRoute({ ...route });
+        const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
+        if (idx >= 0) savedRoutes[idx] = route;
+        refreshLibraryDate();
+      } catch (err) {
+        showShareToast('Could not save: ' + err.message);
+        return;
+      }
+    } else {
+      const idx = uploadedRoutes.findIndex(r => r.id === activeRouteId);
+      if (idx >= 0) uploadedRoutes[idx] = route;
+    }
+
+    const parsed  = GPXParser.parse(reversed);
+    currentPoints = parsed.points;
+    renderStats(parsed.metadata, parsed.stats);
+    MapManager.showRoute(parsed.points, parsed.stats);
+    setReversedBadge(!!route.reversed);
+
+    backupNeeded = true;
+    scheduleBackup();
+    showShareToast(route.reversed ? 'Route reversed.' : 'Route restored to original direction.');
+  }
+
+  function openReverseConfirm() {
+    if (!currentGpxText) return;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+
+    const h3 = document.createElement('h3');
+    h3.textContent = 'Reverse route';
+
+    const p = document.createElement('p');
+    p.textContent = "This will flip the direction of this route's track and overwrite it. This can't be undone.";
+
+    const btns = document.createElement('div');
+    btns.className = 'confirm-btns';
+
+    const btnReverse = document.createElement('button');
+    btnReverse.className = 'confirm-overwrite';
+    btnReverse.textContent = 'Reverse & overwrite';
+
+    const btnCancel = document.createElement('button');
+    btnCancel.className = 'confirm-cancel';
+    btnCancel.textContent = 'Cancel';
+
+    btns.appendChild(btnReverse);
+    btns.appendChild(btnCancel);
+    box.appendChild(h3);
+    box.appendChild(p);
+    box.appendChild(btns);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    btnReverse.onclick = () => { overlay.remove(); applyRouteReversal(); };
+    btnCancel.onclick  = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
   }
 
   async function shareRoute() {
@@ -3024,6 +3241,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       if (difficultyCache[route.id] !== routeDiff) { difficultyCache[route.id] = routeDiff; saveDifficultyCache(); }
       setDifficultyBadge(routeDiff);
 
+      // Reversed-from-original badge
+      setReversedBadge(!!route.reversed);
+
       // Geocode centroid for location search (lazy, rate-limited)
       if (parsed.points.length) {
         const cLat = parsed.points.reduce((s, p) => s + p.lat, 0) / parsed.points.length;
@@ -3120,6 +3340,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     currentActivity = null;
     setActivityIcon(null);
     setDifficultyBadge(null);
+    setReversedBadge(false);
     ['stat-distance','stat-duration','stat-elevation-gain','stat-elevation-range',
      'stat-max-elevation','stat-min-elevation','stat-gradient','stat-avg-speed','stat-author']
       .forEach(id => { document.getElementById(id).textContent = '…'; });
@@ -3777,6 +3998,24 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     });
   }
 
+  // ── Dark mode toggle ──────────────────────────────────────────────────────────
+
+  function setupTheme() {
+    const btn = document.getElementById('theme-toggle-btn');
+    if (!btn) return;
+
+    btn.addEventListener('click', () => {
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('gpxlib-theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('gpxlib-theme', 'dark');
+      }
+    });
+  }
+
   // ── Sidebar drag-to-resize ────────────────────────────────────────────────────
 
   function setupSidebarResize() {
@@ -4072,6 +4311,12 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     }
   }
 
+  function setReversedBadge(isReversed) {
+    const el = document.getElementById('route-reversed-badge');
+    if (!el) return;
+    el.style.display = isReversed ? '' : 'none';
+  }
+
   // ── Activity icon ─────────────────────────────────────────────────────────────
 
   function setActivityIcon(activityKey) {
@@ -4107,7 +4352,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     // Deploy date + GitHub link
     document.getElementById('deploy-date').textContent = DEPLOY_DATE;
-    document.querySelector('.sidebar-info-btn').href = GITHUB_REPO;
+    document.querySelector('a.sidebar-info-btn').href = GITHUB_REPO;
 
     // Sort
     setupSort();
@@ -4115,11 +4360,19 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     // Overview mode
     document.getElementById('btn-overview').addEventListener('click', toggleOverview);
 
+    // Bulk export GPX bar
+    document.getElementById('bulk-export-select-all').addEventListener('change', e => {
+      bulkExportSelectAll(e.currentTarget.checked);
+    });
+    document.getElementById('btn-bulk-export-download').addEventListener('click', exportSelectedRoutesAsGpx);
+    document.getElementById('btn-bulk-export-cancel').addEventListener('click', cancelBulkExport);
+
     // Layout controls
     setupMobileUI();
     setupSidebarToggle();
     setupSidebarResize();
     setupSplitHandle();
+    setupTheme();
 
     // Inline field editing — name, description, author
     document.getElementById('edit-btn-name').addEventListener('click', () => {
@@ -4308,6 +4561,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     // Trim route button (edit start/end points)
     document.getElementById('btn-trim-route').addEventListener('click', openTrimPickerForEdit);
+
+    // Reverse route button (flip track direction, overwrite)
+    document.getElementById('btn-reverse-route').addEventListener('click', openReverseConfirm);
 
     // Initialise privacy zone circles on the map
     MapManager.updatePrivacyZones(getPrivacyZones());

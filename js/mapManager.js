@@ -128,9 +128,57 @@ const MapManager = (() => {
           + '&copy; <a href="https://carto.com/attributions">CARTO</a>',
       },
     },
+    {
+      id: 'openslopemap',
+      label: 'Slope Angle (Alps)',
+      source: 'OpenSlopeMap',
+      baseUnder: 'carto-light', // regional overlay only — needs a basemap beneath outside its coverage area
+      url: 'https://tileserver{s}.openslopemap.org/OSloMap_HR_AlpsEast_16/{z}/{x}/{y}.png',
+      opts: {
+        subdomains: '1234',
+        maxZoom: 19,
+        maxNativeZoom: 16,
+        attribution:
+          '&copy; <a href="https://www.openslopemap.org/projekt/lizenzen/">OpenSlopeMap</a> '
+          + '(<a href="https://creativecommons.org/licenses/by-sa/4.0/">CC-BY-SA 4.0</a>) | '
+          + '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors',
+      },
+    },
+    {
+      id: 'atesmaps-pyrenees',
+      label: 'Slope Angle (Pyrenees)',
+      source: 'ATES Maps',
+      type: 'wms',
+      baseUnder: 'carto-light', // regional overlay only — needs a basemap beneath outside its coverage area
+      url: 'https://geoserver.atesmaps.org/wms',
+      opts: {
+        layers: 'mdp:mdp_all_ok',
+        format: 'image/png',
+        transparent: true,
+        version: '1.1.1',
+        minZoom: 9,
+        maxZoom: 16,
+        attribution:
+          '&copy; <a href="https://atesmaps.org/">ATES Maps</a> — slope angle map (Pyrenees)',
+      },
+    },
   ];
 
   // ── Initialisation (lazy — called on first showRoute) ───────────────────────
+
+  function createTileLayer(layer) {
+    const tile = layer.type === 'wms'
+      ? L.tileLayer.wms(layer.url, layer.opts)
+      : L.tileLayer(layer.url, layer.opts);
+
+    if (!layer.baseUnder) return tile;
+
+    // Regional overlays (e.g. slope-angle maps) only cover a small area and
+    // render transparent outside it — pair with a basemap so the rest of the
+    // map isn't left blank.
+    const base = LAYERS.find(l => l.id === layer.baseUnder);
+    return L.layerGroup([L.tileLayer(base.url, base.opts), tile]);
+  }
 
   function ensureMap() {
     if (map) return;
@@ -145,7 +193,7 @@ const MapManager = (() => {
     map.getPane('privacyPane').style.pointerEvents = 'none';
 
     const layer = LAYERS.find(l => l.id === currentLayerKey);
-    currentTile = L.tileLayer(layer.url, layer.opts).addTo(map);
+    currentTile = createTileLayer(layer).addTo(map);
 
     // Query-mode click handler
     map.on('click', e => {
@@ -224,7 +272,7 @@ const MapManager = (() => {
     if (!map || !layer) return;
     if (currentTile) map.removeLayer(currentTile);
     currentLayerKey = id;
-    currentTile = L.tileLayer(layer.url, layer.opts).addTo(map);
+    currentTile = createTileLayer(layer).addTo(map);
     if (trackLine) trackLine.bringToFront();
   }
 

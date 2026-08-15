@@ -1,6 +1,6 @@
 /**
  * Activity catalogue — definitions, emoji icons, and category helpers.
- * Each route in library.json can carry an `activity` key matching one entry here.
+ * Each route can carry an `activity` key matching one entry here.
  */
 
 /* eslint-disable */

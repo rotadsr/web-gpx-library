@@ -4,8 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GPX Library</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>" />
   <link rel="stylesheet" href="style.css" />
+  <script>
+    (function () {
+      var t = localStorage.getItem('gpxlib-theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    })();
+  </script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css" />
 </head>
@@ -22,6 +28,10 @@
           <h1>GPX Library</h1>
           <span class="sidebar-tagline">Updated <span id="deploy-date"></span></span>
         </div>
+        <button id="theme-toggle-btn" class="sidebar-info-btn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+          <svg class="icon-sun" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        </button>
         <a href="https://github.com/rotadsr/web-gpx-library" target="_blank" rel="noopener noreferrer" class="sidebar-info-btn" title="View source on GitHub">
           <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         </a>
@@ -56,7 +66,17 @@
             <button id="btn-overview" class="lib-action-btn" title="Show all routes on map">Show all</button>
             <button id="btn-sort-lib" class="lib-action-btn" title="Sort routes">⇅ A→Z</button>
             <input type="file" id="import-lib-input" accept=".json" hidden />
-            <button id="btn-lib-menu" class="lib-action-btn lib-menu-btn" title="Library actions">···</button>
+            <button id="btn-lib-menu" class="lib-action-btn lib-menu-btn" title="Library actions" aria-label="Library actions">···</button>
+          </div>
+        </div>
+        <div id="bulk-export-bar" style="display:none">
+          <label class="bulk-export-select-all-label">
+            <input type="checkbox" id="bulk-export-select-all" />
+            <span id="bulk-export-count">0 routes selected</span>
+          </label>
+          <div class="bulk-export-actions">
+            <button id="btn-bulk-export-download" class="lib-action-btn" disabled>⬇ Download GPX</button>
+            <button id="btn-bulk-export-cancel" class="lib-action-btn">Cancel</button>
           </div>
         </div>
         <div id="file-tree"></div>
@@ -122,30 +142,30 @@
 
         <!-- Vertical toolbar (right side) -->
         <div id="map-toolbar">
-          <button class="map-tool" id="btn-zoom-in" title="Zoom in">
+          <button class="map-tool" id="btn-zoom-in" title="Zoom in" aria-label="Zoom in">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
-          <button class="map-tool" id="btn-zoom-out" title="Zoom out">
+          <button class="map-tool" id="btn-zoom-out" title="Zoom out" aria-label="Zoom out">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
           <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-locate" title="My location">
+          <button class="map-tool" id="btn-locate" title="My location" aria-label="My location">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/></svg>
           </button>
           <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-layers" title="Change map layer">
+          <button class="map-tool" id="btn-layers" title="Change map layer" aria-label="Change map layer">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
           </button>
-          <button class="map-tool" id="btn-legend" title="Legend">
+          <button class="map-tool" id="btn-legend" title="Legend" aria-label="Legend">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><circle cx="12" cy="8" r="0.5" fill="currentColor"/></svg>
           </button>
-          <button class="map-tool" id="btn-query" title="Query location on click">
+          <button class="map-tool" id="btn-query" title="Query location on click" aria-label="Query location on click">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
           <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-ski" title="Show ski resort pistes for this area">❄️</button>
+          <button class="map-tool" id="btn-ski" title="Show ski resort pistes for this area" aria-label="Show ski resort pistes for this area">❄️</button>
           <div class="tool-sep"></div>
-          <button class="map-tool" id="btn-3d" title="3D route view">
+          <button class="map-tool" id="btn-3d" title="3D route view" aria-label="3D route view">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           </button>
         </div>
@@ -193,7 +213,7 @@
           <span class="banner-icon">🔗</span>
           <span class="banner-text">This route was shared via a link. Save it to your library to keep it permanently.</span>
           <button id="banner-save-btn" class="banner-save-btn">Save to Library</button>
-          <button id="banner-dismiss-btn" class="banner-dismiss-btn" title="Dismiss">✕</button>
+          <button id="banner-dismiss-btn" class="banner-dismiss-btn" title="Dismiss" aria-label="Dismiss">✕</button>
         </div>
 
         <div id="route-header">
@@ -205,13 +225,17 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
               </button>
               <span id="route-difficulty-badge" class="route-difficulty-badge" style="display:none"></span>
+              <span id="route-reversed-badge" class="route-reversed-badge" title="This route's direction has been reversed from its original recording" style="display:none">⇄ Reversed</span>
             </div>
             <div class="route-header-controls">
-              <button id="btn-trim-route" class="btn-share-route" title="Edit start/end points">
+              <button id="btn-trim-route" class="btn-share-route" title="Edit start/end points" aria-label="Edit start/end points">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
               </button>
+              <button id="btn-reverse-route" class="btn-share-route" title="Reverse route direction" aria-label="Reverse route direction">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </button>
               <div class="btn-download-wrap">
-                <button id="btn-download-route" class="btn-share-route" title="Download">
+                <button id="btn-download-route" class="btn-share-route" title="Download" aria-label="Download">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 </button>
                 <div id="download-menu" class="download-menu" hidden>
@@ -219,10 +243,10 @@
                   <button class="download-menu-item" id="dl-simplified">Simplified track</button>
                 </div>
               </div>
-              <button id="btn-send-to-gps" class="btn-share-route" title="Send to my GPS app">
+              <button id="btn-send-to-gps" class="btn-share-route" title="Send to my GPS app" aria-label="Send to my GPS app">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
               </button>
-              <button id="btn-share-route" class="btn-share-route" title="Share">
+              <button id="btn-share-route" class="btn-share-route" title="Share" aria-label="Share">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 <span id="btn-share-label" style="display:none">Share</span>
               </button>
@@ -325,7 +349,7 @@
   <div class="share-dialog pat-dialog">
     <div class="share-dialog-header">
       <h3 id="pat-modal-title">GitHub Token Required</h3>
-      <button id="pat-modal-close" class="share-close-btn" title="Close">✕</button>
+      <button id="pat-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <p class="share-dialog-hint">To share routes you need a GitHub Personal Access Token (PAT) with the <code>gist</code> scope. It is stored only in <em>this browser</em> and is never sent anywhere except GitHub.</p>
     <p class="share-dialog-hint">Recipients don't need a token — anyone with the link can view the route.</p>
@@ -346,7 +370,7 @@
   <div class="share-dialog">
     <div class="share-dialog-header">
       <h3 id="share-modal-title">Share Route</h3>
-      <button id="share-modal-close" class="share-close-btn" title="Close">✕</button>
+      <button id="share-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <p class="share-dialog-hint">Anyone with this link can view the route. Recipients can save it to their local library.</p>
     <p id="share-simplify-info" class="share-simplify-info" style="display:none"></p>
@@ -388,7 +412,7 @@
   <div class="share-dialog gps-qr-dialog">
     <div class="share-dialog-header">
       <h3 id="gps-qr-modal-title">Send to my GPS app</h3>
-      <button id="gps-qr-modal-close" class="share-close-btn" title="Close">✕</button>
+      <button id="gps-qr-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <p class="share-dialog-hint">Scan this QR code with your phone. It will open the GPX file and let you choose your GPS app.</p>
     <div class="gps-qr-body">
@@ -403,7 +427,7 @@
   <div class="share-dialog pat-dialog">
     <div class="share-dialog-header">
       <h3 id="gh-import-modal-title">Import from GitHub</h3>
-      <button id="gh-import-modal-close" class="share-close-btn" title="Close">✕</button>
+      <button id="gh-import-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <p class="share-dialog-hint">Fetch <code>gpx-library.json</code> from a GitHub repository. The repo must contain a file exported from this app.</p>
     <label class="pat-input-row">
@@ -428,7 +452,7 @@
   <div class="share-dialog pat-dialog">
     <div class="share-dialog-header">
       <h3 id="backup-modal-title">GitHub Backup Settings</h3>
-      <button id="backup-modal-close" class="share-close-btn" title="Close">✕</button>
+      <button id="backup-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <p class="share-dialog-hint">Your library will be automatically saved as <code>gpx-library.json</code> in a private GitHub repository, 30 seconds after any change.</p>
     <p class="share-dialog-hint">Your token needs the <code>repo</code> scope (in addition to <code>gist</code> for sharing). Leave the field empty to disable backup.</p>
@@ -455,7 +479,7 @@
   <div class="share-dialog privacy-dialog">
     <div class="share-dialog-header">
       <h3 id="privacy-modal-title">Privacy Zones</h3>
-      <button id="privacy-modal-close" class="share-close-btn" title="Close">✕</button>
+      <button id="privacy-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
     </div>
     <p class="share-dialog-hint">Track points within each zone's radius are removed when sharing a route. Add as many zones as you need.</p>
 

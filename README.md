@@ -8,11 +8,13 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 ## Features
 
 ### 📍 Route Visualization
-- Interactive map with multiple tile layers (OpenStreetMap, OpenTopoMap, Esri, etc.)
+- Interactive map with multiple tile layers — Street Map, Topographic (OpenTopoMap), Satellite & Esri Topo, Cycling (CyclOSM), Humanitarian, and CartoDB Light (default) / Dark
+- **Slope angle overlays** — colour-coded avalanche-risk slope shading for backcountry planning, covering the Alps (OpenSlopeMap) and the Pyrenees (ATES Maps WMS); layered automatically over a basemap outside their coverage area
 - Route track display with start (🟢) and end (🔴) point markers
 - Real-time elevation cursor on the map
 - **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
 - **Ski resort piste overlay** — colour-coded run difficulty (🟢 beginner → 🔵 easy → 🔴 intermediate → ⚫ advanced, dashed lifts) loaded automatically for 35 resorts across the Alps, Andorra, and Spain
+- **Reverse route direction** — flip a track end-to-end with one click; a "⇄ Reversed" badge appears in the route header, and the flip persists to the library (click again to restore the original direction)
 
 ### 🗺️ Overview Mode
 - **Show all routes** on the map at once with the "Show all" button
@@ -31,7 +33,8 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **My Library** — save routes permanently to the browser (IndexedDB)
 - **Session uploads** — temporary routes for quick preview
 - **Inline metadata editing** — click the pencil icon next to a route name, description, or author to edit in place; changes are saved immediately to the library and synced into the GPX file
-- **Export/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository
+- **Export Library/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository
+- **Bulk export GPX** — select any number of routes from the library and download each as an individual GPX file in one go
 - **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes)
 
 ### 🔍 Search & Filter
@@ -77,16 +80,21 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Details panel collapses to a bottom sheet; tap the handle to expand
 - Tap any route to close the sidebar and fly to the track
 
+### ♿ Accessibility
+- Icon-only controls (zoom, layers, share, download, close, etc.) carry descriptive `aria-label` attributes for screen-reader users
+- **Dark mode** — toggle button in the sidebar header switches the whole app to a dark theme; preference is remembered across sessions
+
 ### ⚙️ User-Friendly Workflow
 1. **Upload** a GPX file (drag & drop or click)
 2. **Preview** on the interactive map with full stats
 3. **Save** to your library (persists across browser sessions)
 4. **Edit metadata** inline — pencil icons next to name, description, and author
 5. **Trim** start/end points with the scissors button — permanently crops the stored route
-6. **Download** the full or simplified track at any time
-7. **Share** a link directly — if the route passes through a privacy zone, choose exactly what to share with the visual trim picker
-8. **Send to my GPS app** — scan the QR code with your phone; on Android the GPS app picker opens directly, on iPhone download the file and use **Open in…** to send it to Garmin Connect, Coros, or any other GPS app
-9. **Export** for backup, or enable auto-backup to a private GitHub repository
+6. **Reverse** the route direction with one click — a "⇄ Reversed" badge shows the flip, and it's saved back to the library
+7. **Download** the full or simplified track at any time
+8. **Share** a link directly — if the route passes through a privacy zone, choose exactly what to share with the visual trim picker
+9. **Send to my GPS app** — scan the QR code with your phone; on Android the GPS app picker opens directly, on iPhone download the file and use **Open in…** to send it to Garmin Connect, Coros, or any other GPS app
+10. **Export Library** for backup, **Bulk export GPX** to grab several routes at once, or enable auto-backup to a private GitHub repository
 
 ## How to Use
 
@@ -103,9 +111,14 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 - Routes persist across browser sessions in IndexedDB
 
 ### Export Your Library
-- Click **"···"** → **Export** in the library header
+- Click **"···"** → **Export Library** in the library header
 - Downloads `gpx-library-YYYY-MM-DD.json`
 - Keep as backup on your computer
+
+### Bulk Export GPX
+- Click **"···"** → **Bulk export GPX** in the library header
+- Checkboxes appear next to every route — tick the ones you want, or use the header checkbox to select/deselect all
+- Click **⬇ Download GPX** to save each selected route as its own `.gpx` file, or **Cancel** to exit without exporting
 
 ### Import Previously Exported Library
 Two options are available under **"···"** → **Import** in the library header:
@@ -198,7 +211,7 @@ Two options are available under **"···"** → **Import** in the library heade
 ## Tech Stack
 
 - **Frontend**: Vanilla JavaScript (no frameworks)
-- **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers
+- **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers — OpenStreetMap, OpenTopoMap, Esri, CyclOSM, [CartoDB](https://carto.com/basemaps) Light/Dark, [OpenSlopeMap](https://openslopemap.org/) and [ATES Maps](https://atesmaps.org/) for slope-angle overlays
 - **Heatmap**: [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat) for overview density view
 - **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
