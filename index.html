@@ -108,20 +108,21 @@
   <!-- ── Main ─────────────────────────────────────────────────────────────── -->
   <main id="main">
 
-    <!-- Empty state -->
-    <div id="empty-state">
-      <div class="empty-icon">🗺️</div>
-      <h2>Select a route</h2>
-      <p class="hide-mobile">Choose a GPX file from the library on the left to view it on the map.</p>
-      <p class="show-mobile">Tap <strong>Routes</strong> to browse your library.</p>
-    </div>
-
-    <!-- Route view (shown when a file is selected) -->
-    <div id="route-view" style="display:none">
+    <!-- Route view (map is always rendered; details panel shown once a route is active) -->
+    <div id="route-view" class="no-route-active">
 
       <!-- Map -->
       <div id="map-container">
         <div id="map"></div>
+
+        <!-- Map search: jump to a place by name -->
+        <div id="map-search-box">
+          <input type="text" id="map-search-input" placeholder="Search a place…" aria-label="Search a place">
+          <button id="map-search-btn" type="button" title="Search" aria-label="Search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </button>
+        </div>
+        <div id="map-search-error" hidden></div>
 
         <!-- Overview tooltip (follows cursor when in overview mode) -->
         <div id="overview-tooltip" style="display:none"></div>
@@ -337,6 +338,27 @@
           <div id="weather-days"></div>
           <div id="weather-hourly" style="display:none"></div>
           <p class="weather-disclaimer">Always use your own judgement before going out. Colour highlights are indicative only — check the full forecast and make your own decision.</p>
+        </div>
+
+        <!-- Track creator action bar -->
+        <div id="tc-action-bar" hidden>
+          <div id="tc-mode-toggle" class="tc-mode-toggle">
+            <button id="tc-mode-snap" class="tc-mode-btn is-active" type="button">Snap to path</button>
+            <button id="tc-mode-draw" class="tc-mode-btn" type="button">Draw</button>
+          </div>
+          <select id="tc-profile" title="Routing profile" aria-label="Routing profile">
+            <option value="hiking-mountain">Hiking</option>
+            <option value="trekking">Walking</option>
+            <option value="fastbike">Cycling</option>
+            <option value="mtb">Mountain bike</option>
+          </select>
+          <span id="tc-status" class="tc-status-line"></span>
+          <div class="tc-action-buttons">
+            <button id="tc-undo" class="tc-btn" type="button" disabled>Undo</button>
+            <button id="tc-redo" class="tc-btn" type="button" disabled>Redo</button>
+            <button id="tc-dismiss" class="tc-btn" type="button">Dismiss</button>
+            <button id="tc-save" class="tc-btn tc-btn-primary" type="button" disabled>Save track</button>
+          </div>
         </div>
       </div>
 
@@ -563,6 +585,7 @@
 <!-- App scripts -->
 <script src="js/storage.js"></script>
 <script src="js/gpxParser.js"></script>
+<script src="js/trackCreator.js"></script>
 <script src="js/mapManager.js"></script>
 <script src="js/activities.js"></script>
 <script src="js/view3d.js"></script>

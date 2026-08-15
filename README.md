@@ -15,6 +15,18 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
 - **Ski resort piste overlay** — colour-coded run difficulty (🟢 beginner → 🔵 easy → 🔴 intermediate → ⚫ advanced, dashed lifts) loaded automatically for 35 resorts across the Alps, Andorra, and Spain
 - **Reverse route direction** — flip a track end-to-end with one click; a "⇄ Reversed" badge appears in the route header, and the flip persists to the library (click again to restore the original direction)
+- **Map is always visible** — the map renders immediately even with an empty library, so you can pan/zoom/search right away
+- **Map search** — type a place name (city, region, or country — e.g. "La Seu d'Urgell" or "Catalonia") in the search box on the map to fly straight there, powered by Nominatim
+
+### 🧭 Track Creator
+- **Build a route by clicking the map** — open **"···"** → **Create Track…** in the library header, then click points on the map to build a route from scratch
+- **Snap to path** — consecutive points are automatically routed along real roads/trails via the [BRouter](https://brouter.de/) public routing server, with a choice of profile: Hiking, Walking, Cycling, or Mountain bike
+- **Draw mode** — switch to freehand drawing for stretches that aren't in BRouter's routing data (e.g. an unmapped trail); points connect with straight lines instead of snapping. Snap and Draw segments can be mixed freely within the same track — switch modes at any point while building
+- **Live feedback** — the details panel below the map fills in with real stats (distance, elevation gain/loss, gradient) and the elevation/gradient chart as you add points, exactly like viewing any saved route
+- **Undo / Redo** — step backward and forward through placed points; adding a new point after an undo clears the redo history, as usual
+- **Name it as you build** — click the pencil next to the track title to type a name before saving, or leave it and a default date-based name is used
+- **Save** — once you have a valid route, click **Save track**; it's written to your library and opens immediately with every field (name, description, author, activity, tags, folder) editable exactly like any other route
+- **Dismiss** — discard everything and exit at any time without saving
 
 ### 🗺️ Overview Mode
 - **Show all routes** on the map at once with the "Show all" button
@@ -105,6 +117,14 @@ No installation needed — just open the app in your browser (GitHub Pages link)
 1. Click **"Upload GPX files"** in the left sidebar (drag & drop or click to browse)
 2. Route appears in **Uploaded Routes** section
 3. Click to view on the map
+
+### Create a Track
+1. Click **"···"** → **Create Track…** in the library header
+2. Optionally search for a place on the map first to jump to the right area
+3. Click points on the map to build the route — by default each new point snaps to the nearest road/trail via BRouter
+4. Switch **Snap to path** / **Draw** in the bottom action bar to mix routed and freehand-drawn stretches, and pick a routing profile (Hiking, Walking, Cycling, Mountain bike) for snapped segments
+5. Watch the stats and elevation/gradient chart update live as you add points; use **Undo** / **Redo** to adjust, or click the pencil next to the title to name it
+6. Click **Save track** when you're happy with it — the new route opens immediately, fully editable like any other saved route — or **Dismiss** to discard everything
 
 ### Save to Library
 - Click the **yellow save button** on any uploaded route
@@ -221,8 +241,9 @@ Two options are available under **"···"** → **Import** in the library heade
   - [GitHub Gist API](https://docs.github.com/en/rest/gists) — route sharing (free; sharer needs a PAT with `gist` scope)
   - [GitHub Contents API](https://docs.github.com/en/rest/repos/contents) — optional library backup to a private repo (needs `repo` scope)
   - [Open-Meteo](https://open-meteo.com/) — weather (free, no key)
-  - [Nominatim](https://nominatim.org/) — forward and reverse geocoding for location search and privacy zone address lookup (free)
+  - [Nominatim](https://nominatim.org/) — forward and reverse geocoding for location search, the map search box, and privacy zone address lookup (free)
   - [Overpass API](https://overpass-api.de/) — ski resort piste & lift data from OpenStreetMap (free; results cached 24 h in localStorage)
+  - [BRouter](https://brouter.de/) — snap-to-path routing for the Track Creator (free, no key)
 
 ## File Structure
 
@@ -235,6 +256,7 @@ web-gpx-library/
 │   ├── storage.js          # IndexedDB wrapper
 │   ├── gpxParser.js        # GPX parsing & stats
 │   ├── mapManager.js       # Leaflet integration
+│   ├── trackCreator.js     # Track Creator: BRouter snap-to-path + draw mode
 │   ├── view3d.js           # MapLibre GL 3D terrain view
 │   └── activities.js       # Activity catalogue
 └── README.md               # This file
@@ -269,6 +291,7 @@ Then open `http://localhost:8000` in your browser.
 - Route difficulty and geocoded locations are cached in localStorage for fast filtering.
 - Ski resort piste data is cached in localStorage (24-hour TTL) and never leaves your browser.
 - Your GitHub PAT is stored only in your browser's localStorage and is sent exclusively to `api.github.com`.
+- The Track Creator sends the points you click to the public `brouter.de` routing server to compute snap-to-path routes; points placed in Draw mode never leave your browser since no routing call is made for them.
 - Export your library regularly for backup, or enable the GitHub auto-backup feature.
 - Clearing browser site data will delete your library (export first!).
 
@@ -333,6 +356,14 @@ Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fl
 
 ### Location Search & Geocoding
 When a route is first opened (or when overview mode loads all routes), its centre point is reverse-geocoded via Nominatim. The result — city, county, region, country — is cached in localStorage so future searches are instant. Searching by location, country name, or flag emoji all use this cached data.
+
+### Track Creator: Snap-to-Path & Draw Mode
+Each point you click is tagged with whichever mode was active when you placed it, so a single track can freely mix routed and freehand stretches:
+- **Snap to path** points are grouped into runs and sent to BRouter (`lonlats=...&profile=...&format=gpx`), which returns a real routed path with elevation for that stretch — useful when the road/trail exists in OpenStreetMap's routing graph.
+- **Draw** points are connected with plain straight lines and never leave the browser — useful for tracing a visible but unmapped trail, or any stretch BRouter can't route.
+- Switching modes mid-track just changes how *new* points are connected going forward; previously placed segments keep whatever mode they were drawn in.
+- All the resulting segments are merged into one continuous track and re-parsed once, so distance/elevation/gradient stats are computed consistently across the whole route regardless of how many snap/draw stretches it contains. Draw-mode stretches simply have no elevation data, so gain/loss calculations skip over them rather than showing fabricated numbers.
+- Requests are debounced (~400ms after your last click) so rapid point placement doesn't hammer the free public BRouter server, and a stale-response guard discards any routing result that's no longer relevant if you've since added or undone points.
 
 ## Keyboard Shortcuts
 
