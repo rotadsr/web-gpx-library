@@ -461,32 +461,6 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, -apple-syst
   background: var(--bg);
 }
 
-/* ── Empty State ───────────────────────────────────────────────────────────── */
-#empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  color: var(--text-muted);
-}
-
-.empty-icon { font-size: 56px; opacity: 0.5; }
-
-#empty-state h2 {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--text);
-}
-
-#empty-state p {
-  font-size: 14px;
-  color: var(--text-muted);
-  max-width: 300px;
-  text-align: center;
-}
-
 /* ── Route View ────────────────────────────────────────────────────────────── */
 #route-view {
   flex: 1;
@@ -604,6 +578,63 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   background: var(--border);
   margin: 2px 0;
 }
+
+/* ── Map Search (jump to a place) ─────────────────────────────────────────────── */
+#map-search-box {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+  padding: 4px;
+}
+#map-search-input {
+  width: 190px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  padding: 6px 8px;
+}
+#map-search-input::placeholder { color: var(--text-muted); }
+#map-search-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text);
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+#map-search-btn svg { width: 15px; height: 15px; pointer-events: none; }
+#map-search-btn:hover:not(:disabled) { background: var(--border); }
+#map-search-btn:disabled { opacity: 0.5; cursor: default; }
+
+#map-search-error {
+  position: absolute;
+  top: 52px;
+  left: 10px;
+  z-index: 1001;
+  max-width: 240px;
+  background: var(--surface);
+  color: #dc2626;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+}
+#map-search-error[hidden] { display: none; }
 
 /* ── Map Panels (layers + legend) ───────────────────────────────────────────── */
 .map-panel {
@@ -2342,10 +2373,13 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 #btn-ski { font-size: 14px; }
 #btn-ski.active { background: rgba(59,130,246,0.15); color: var(--primary); }
 
-/* ── Overview mode: map fills route-view, bottom bar hidden ─────────────────── */
-#route-view.overview-active #split-handle  { display: none !important; }
-#route-view.overview-active #details-panel { display: none !important; }
-#route-view.overview-active #map-container { flex: 1 !important; height: auto !important; }
+/* ── Overview mode / no active route: map fills route-view, bottom bar hidden ── */
+#route-view.overview-active #split-handle,
+#route-view.no-route-active #split-handle  { display: none !important; }
+#route-view.overview-active #details-panel,
+#route-view.no-route-active #details-panel { display: none !important; }
+#route-view.overview-active #map-container,
+#route-view.no-route-active #map-container { flex: 1 !important; height: auto !important; }
 
 /* ── Utility: desktop-only / mobile-only ───────────────────────────────────── */
 .hide-mobile  { }
@@ -2408,14 +2442,6 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
     z-index: 1;
   }
 
-  /* Empty state: fill the viewport */
-  #empty-state {
-    position: fixed;
-    inset: 0;
-    z-index: 1;
-    background: var(--bg);
-  }
-
   /* Map: fill remaining space above the bottom sheet */
   #map-container {
     flex: 1 !important;
@@ -2430,6 +2456,15 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
     padding: 5px;
   }
   .map-tool { width: 32px; height: 32px; }
+
+  /* Map search: sit below the floating Routes button instead of behind it */
+  #map-search-box {
+    top: 62px;
+    left: 14px;
+    right: 14px;
+  }
+  #map-search-input { width: auto; flex: 1; }
+  #map-search-error { top: 104px; left: 14px; right: 14px; max-width: none; }
 
   /* Hide horizontal split handle */
   #split-handle { display: none !important; }
@@ -2584,4 +2619,126 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   font-size: 13px;
   color: #dc2626;
   margin: 0;
+}
+
+/* ── Track Creator ─────────────────────────────────────────────────────── */
+#tc-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  margin: 0 -20px -20px;
+}
+#tc-action-bar[hidden] {
+  display: none;
+}
+
+.tc-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tc-mode-toggle {
+  display: flex;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tc-mode-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tc-mode-btn:not(:last-child) {
+  border-right: 1.5px solid var(--border);
+}
+.tc-mode-btn:hover {
+  background: var(--bg);
+}
+.tc-mode-btn.is-active {
+  background: var(--primary);
+  color: #fff;
+}
+
+#tc-profile {
+  padding: 6px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+#tc-profile:hover {
+  background: var(--bg);
+}
+
+.tc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.tc-btn:hover:not(:disabled) {
+  background: var(--bg);
+  color: var(--text);
+}
+.tc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.tc-btn-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.tc-btn-primary:hover:not(:disabled) {
+  background: var(--primary-dark);
+  color: #fff;
+}
+.tc-btn-primary:disabled {
+  opacity: 0.5;
+}
+
+.tc-status-line {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 2px 0 4px;
+}
+.tc-status-line[hidden] {
+  display: none;
+}
+
+.tc-waypoint-label {
+  background: rgba(59, 130, 246, 0.9);
+  color: #fff;
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
 }
