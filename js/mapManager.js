@@ -18,6 +18,10 @@ const MapManager = (() => {
   let queryMode         = false;
   let queryPopup        = null;
   let lastQueryMs       = 0;
+  let trackCreatorMode      = false;
+  let trackCreatorClickCb   = null;
+  let tcWaypointMarkers     = [];
+  let tcPreviewLine         = null;
   let overviewLayers     = [];
   let selectedOverviewId = null;
   let heatLayer              = null;
@@ -187,6 +191,7 @@ const MapManager = (() => {
       zoomControl: false,       // custom zoom buttons in toolbar
       attributionControl: true,
     });
+    map.setView([20, 0], 2); // baseline default view; showRoute()'s fitBounds overrides this once a route loads
 
     map.createPane('privacyPane');
     map.getPane('privacyPane').style.zIndex = 401; // just above overlayPane(400), below markers(600)
@@ -195,9 +200,10 @@ const MapManager = (() => {
     const layer = LAYERS.find(l => l.id === currentLayerKey);
     currentTile = createTileLayer(layer).addTo(map);
 
-    // Query-mode click handler
+    // Query-mode / track-creator click handler
     map.on('click', e => {
       if (queryMode) handleQueryClick(e.latlng);
+      if (trackCreatorMode && trackCreatorClickCb) trackCreatorClickCb(e.latlng);
     });
 
     if (_storedPrivacyZones.length) _renderPrivacyZones();
@@ -261,6 +267,42 @@ const MapManager = (() => {
     trackLine = startMarker = endMarker = hoverMarker = null;
   }
 
+  // ── Track creator ────────────────────────────────────────────────────────────
+
+  function setTrackCreatorMode(enabled, onClick) {
+    trackCreatorMode = enabled;
+    trackCreatorClickCb = enabled ? onClick : null;
+    if (!map) return;
+    map.getContainer().style.cursor = enabled ? 'crosshair' : '';
+    if (!enabled) clearTrackCreatorPreview();
+  }
+
+  function showTrackCreatorPreview(waypoints, previewPoints) {
+    ensureMap();
+
+    tcWaypointMarkers.forEach(m => m.remove());
+    tcWaypointMarkers = waypoints.map((wp, i) => {
+      const color = wp.mode === 'draw' ? '#f97316' : '#8b5cf6';
+      const marker = L.circleMarker([wp.lat, wp.lon], { ...dot(color), radius: 7 }).addTo(map);
+      marker.bindTooltip(String(i + 1), { permanent: true, direction: 'top', offset: [0, -6], className: 'tc-waypoint-label' });
+      return marker;
+    });
+
+    if (tcPreviewLine) { tcPreviewLine.remove(); tcPreviewLine = null; }
+    if (previewPoints && previewPoints.length >= 2) {
+      const latlngs = previewPoints.map(p => [p.lat, p.lon]);
+      tcPreviewLine = L.polyline(latlngs, {
+        color: '#8b5cf6', weight: 4, opacity: 0.85, dashArray: '8 6',
+      }).addTo(map);
+    }
+  }
+
+  function clearTrackCreatorPreview() {
+    tcWaypointMarkers.forEach(m => m.remove());
+    tcWaypointMarkers = [];
+    if (tcPreviewLine) { tcPreviewLine.remove(); tcPreviewLine = null; }
+  }
+
   function dot(color, radius = 8) {
     return { radius, fillColor: color, fillOpacity: 1, color: '#fff', weight: 2 };
   }
@@ -315,6 +357,11 @@ const MapManager = (() => {
     });
 
     map.locate({ setView: false });
+  }
+
+  function flyToBounds(bounds) {
+    ensureMap();
+    map.flyToBounds(bounds, { animate: true, duration: 1.2, padding: [40, 40] });
   }
 
   // ── Query / inspect mode ────────────────────────────────────────────────────
@@ -760,11 +807,16 @@ const MapManager = (() => {
   }
 
   return {
+    ensureMap,
     showRoute, clearRoute,
     setMapType, getLayers, getCurrentLayer,
     zoomIn, zoomOut,
     locateUser,
+    flyToBounds,
     setQueryMode,
+    setTrackCreatorMode,
+    showTrackCreatorPreview,
+    clearTrackCreatorPreview,
     invalidateMapSize,
     highlightPoint, hideHighlight,
     getViewState,
