@@ -290,6 +290,7 @@
 
       addItem('📁  New Folder', createNewFolder);
       addDivider();
+      addItem('✏️  Create Track…', enterTrackCreatorMode);
       addItem('⬆  Import from file…', () => document.getElementById('import-lib-input').click());
       addItem('⬆  Import from GitHub…', openGhImportModal);
       addItem('⬇  Export Library', doExport);
@@ -505,8 +506,8 @@
       const wasActive = activeRouteId === id;
       savedRoutes = savedRoutes.filter(r => r.id !== id);
       if (wasActive) {
-        document.getElementById('route-view').style.display  = 'none';
-        document.getElementById('empty-state').style.display = 'flex';
+        document.getElementById('route-view').classList.add('no-route-active');
+        MapManager.invalidateMapSize();
         activeRouteId = null;
       }
       backupNeeded = savedRoutes.length > 0;
@@ -517,6 +518,213 @@
       console.error('Delete error:', err);
       alert('Could not delete route: ' + err.message);
     }
+  }
+
+  // ── Track Creator ─────────────────────────────────────────────────────────────
+
+  let trackCreatorActive = false;
+  let trackCreatorName = null;
+
+  async function saveCreatedTrack({ name, gpxText }) {
+    try {
+      const id = await Storage.saveRoute({
+        name,
+        description: '',
+        activity: null,
+        tags: [],
+        folder: null,
+        gpxText,
+      });
+      savedRoutes.push({
+        name, description: '', activity: null, tags: [],
+        folder: null, gpxText, id, source: 'saved', createdAt: new Date().toISOString(),
+      });
+      backupNeeded = true;
+      scheduleBackup();
+      buildCategoryPills();
+      renderFileTree();
+      const listItem = document.querySelector(`#file-tree [data-id="${id}"]`);
+      if (listItem) {
+        const newRoute = savedRoutes.find(r => r.id === id);
+        if (newRoute) loadRoute(newRoute, listItem);
+      }
+    } catch (err) {
+      console.error('Save created track error:', err);
+      showShareToast('Could not save track: ' + err.message, 'error');
+    }
+  }
+
+  function syncTrackCreatorModeButtons() {
+    const mode = TrackCreator.getMode();
+    document.getElementById('tc-mode-snap').classList.toggle('is-active', mode === 'snap');
+    document.getElementById('tc-mode-draw').classList.toggle('is-active', mode === 'draw');
+    document.getElementById('tc-profile').style.display = mode === 'draw' ? 'none' : '';
+  }
+
+  function enterTrackCreatorMode() {
+    if (trackCreatorActive) return;
+    trackCreatorActive = true;
+
+    document.querySelectorAll('.route-item').forEach(el => el.classList.remove('active'));
+    activeRouteId = null;
+
+    // Fix: clear stale overview-mode state and expand the mobile bottom
+    // sheet — both can otherwise force the details panel to stay hidden.
+    overviewMode = false;
+    document.getElementById('route-view').classList.remove('overview-active');
+    document.getElementById('details-panel').classList.add('mobile-expanded');
+
+    showRouteView();
+    trackCreatorName = null;
+    document.getElementById('route-name').textContent = 'New Track';
+    document.getElementById('route-description').textContent = '';
+    document.getElementById('edit-btn-description').style.display = 'none';
+    clearStats();
+    document.getElementById('chart-container').style.display = 'none';
+    document.getElementById('weather-section').style.display = 'none';
+
+    document.getElementById('tc-action-bar').hidden = false;
+    document.getElementById('tc-undo').disabled = true;
+    document.getElementById('tc-redo').disabled = true;
+    document.getElementById('tc-save').disabled = true;
+    syncTrackCreatorModeButtons();
+
+    const statusEl = document.getElementById('tc-status');
+    statusEl.textContent = 'Click the map to add points';
+
+    document.getElementById('btn-query').classList.remove('active');
+    MapManager.setQueryMode(false);
+    TrackCreator.reset();
+    MapManager.setTrackCreatorMode(true, (latlng) => {
+      TrackCreator.addWaypoint(latlng.lat, latlng.lng);
+    });
+  }
+
+  function exitTrackCreatorMode() {
+    if (!trackCreatorActive) return;
+    trackCreatorActive = false;
+
+    MapManager.setTrackCreatorMode(false);
+    MapManager.clearTrackCreatorPreview();
+    TrackCreator.reset();
+
+    document.getElementById('tc-action-bar').hidden = true;
+    document.getElementById('edit-btn-name').style.display = '';
+    document.getElementById('edit-btn-description').style.display = '';
+
+    if (!activeRouteId) {
+      document.getElementById('route-view').classList.add('no-route-active');
+      MapManager.invalidateMapSize();
+    }
+  }
+
+  function renderTrackCreatorState({ status, waypoints, points, stats, error }) {
+    if (!trackCreatorActive) return;
+
+    const statusEl = document.getElementById('tc-status');
+    const saveBtn  = document.getElementById('tc-save');
+    const undoBtn  = document.getElementById('tc-undo');
+    const redoBtn  = document.getElementById('tc-redo');
+
+    undoBtn.disabled = waypoints.length === 0;
+    redoBtn.disabled = !TrackCreator.canRedo();
+    saveBtn.disabled = !TrackCreator.hasRoute();
+
+    if (status === 'pending') {
+      statusEl.textContent = 'Routing…';
+    } else if (status === 'error') {
+      statusEl.textContent = error || 'Routing error — try undoing the last point.';
+    } else if (status === 'ok') {
+      statusEl.textContent = `${waypoints.length} point${waypoints.length !== 1 ? 's' : ''} placed`;
+    } else if (waypoints.length > 0) {
+      statusEl.textContent = `${waypoints.length} point${waypoints.length !== 1 ? 's' : ''} — click to add more`;
+    } else {
+      statusEl.textContent = 'Click the map to add points';
+    }
+
+    MapManager.showTrackCreatorPreview(waypoints, status === 'ok' ? points : null);
+
+    if (status === 'ok' && points && stats) {
+      renderStats({}, stats);
+      renderElevationChart(points, stats);
+    } else {
+      document.getElementById('chart-container').style.display = 'none';
+    }
+  }
+
+  function setupTrackCreator() {
+    TrackCreator.setOnUpdate(renderTrackCreatorState);
+
+    document.getElementById('tc-profile').addEventListener('change', (e) => {
+      TrackCreator.setProfile(e.currentTarget.value);
+    });
+
+    document.getElementById('tc-mode-snap').addEventListener('click', () => {
+      TrackCreator.setMode('snap');
+      syncTrackCreatorModeButtons();
+    });
+
+    document.getElementById('tc-mode-draw').addEventListener('click', () => {
+      TrackCreator.setMode('draw');
+      syncTrackCreatorModeButtons();
+    });
+
+    document.getElementById('tc-undo').addEventListener('click', () => {
+      TrackCreator.undoLast();
+    });
+
+    document.getElementById('tc-redo').addEventListener('click', () => {
+      TrackCreator.redoLast();
+    });
+
+    document.getElementById('tc-dismiss').addEventListener('click', () => {
+      exitTrackCreatorMode();
+    });
+
+    document.getElementById('tc-save').addEventListener('click', () => {
+      if (!TrackCreator.hasRoute()) return;
+      const name = trackCreatorName || `New Track — ${new Date().toLocaleDateString()}`;
+      const gpxText = TrackCreator.getGpxText(name, '');
+      if (gpxText) {
+        exitTrackCreatorMode();
+        saveCreatedTrack({ name, gpxText });
+      }
+    });
+  }
+
+  function setupMapSearch() {
+    const input = document.getElementById('map-search-input');
+    const btn   = document.getElementById('map-search-btn');
+    const errEl = document.getElementById('map-search-error');
+
+    async function runSearch() {
+      const query = input.value.trim();
+      if (!query) return;
+      errEl.hidden = true;
+      btn.disabled = true;
+      try {
+        const resp = await fetch(
+          'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query)
+          + '&format=json&limit=1',
+          { headers: { 'Accept-Language': navigator.language || 'en' } }
+        );
+        if (!resp.ok) throw new Error('Search service unavailable.');
+        const data = await resp.json();
+        if (!data.length) throw new Error('Place not found. Try a more specific search.');
+        const [south, north, west, east] = data[0].boundingbox.map(parseFloat);
+        MapManager.flyToBounds([[south, west], [north, east]]);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    btn.addEventListener('click', runSearch);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runSearch();
+    });
   }
 
   /** Called by the editor when the user clicks "Save to Library". */
@@ -804,8 +1012,8 @@
   function removeUpload(id) {
     uploadedRoutes = uploadedRoutes.filter(r => r.id !== id);
     if (activeRouteId === id) {
-      document.getElementById('route-view').style.display  = 'none';
-      document.getElementById('empty-state').style.display = 'flex';
+      document.getElementById('route-view').classList.add('no-route-active');
+      MapManager.invalidateMapSize();
       activeRouteId = null;
     }
     renderFileTree();
@@ -998,8 +1206,8 @@
         const wasViewing = activeRouteId && uploadedRoutes.some(r => r.id === activeRouteId);
         uploadedRoutes = [];
         if (wasViewing) {
-          document.getElementById('route-view').style.display  = 'none';
-          document.getElementById('empty-state').style.display = 'flex';
+          document.getElementById('route-view').classList.add('no-route-active');
+          MapManager.invalidateMapSize();
           activeRouteId = null;
         }
         renderFileTree();
@@ -1534,8 +1742,8 @@
     if (currentPoints.length >= 2) {
       MapManager.showRoute(currentPoints, currentStats);
     } else if (!activeRouteId) {
-      document.getElementById('route-view').style.display  = 'none';
-      document.getElementById('empty-state').style.display = 'flex';
+      document.getElementById('route-view').classList.add('no-route-active');
+      MapManager.invalidateMapSize();
     }
 
     MapManager.invalidateMapSize();
@@ -3193,6 +3401,8 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   // ── Route loading ─────────────────────────────────────────────────────────────
 
   async function loadRoute(route, listItem) {
+    if (trackCreatorActive) exitTrackCreatorMode();
+
     // Second click on the already-active route → show all routes in overview
     if (route.id === activeRouteId && !overviewMode) {
       await toggleOverview();
@@ -4336,8 +4546,8 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   // ── UI helpers ────────────────────────────────────────────────────────────────
 
   function showRouteView() {
-    document.getElementById('empty-state').style.display = 'none';
-    document.getElementById('route-view').style.display  = 'flex';
+    document.getElementById('route-view').classList.remove('no-route-active');
+    MapManager.invalidateMapSize();
   }
 
   function showError(msg) {
@@ -4349,6 +4559,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   // ── DOMContentLoaded: wire all interactive elements ───────────────────────────
 
   document.addEventListener('DOMContentLoaded', () => {
+
+    // Render the map immediately, even with an empty library
+    MapManager.ensureMap();
 
     // Deploy date + GitHub link
     document.getElementById('deploy-date').textContent = DEPLOY_DATE;
@@ -4374,10 +4587,23 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     setupSplitHandle();
     setupTheme();
 
+    // Track Creator
+    setupTrackCreator();
+
+    // Map search
+    setupMapSearch();
+
     // Inline field editing — name, description, author
     document.getElementById('edit-btn-name').addEventListener('click', () => {
-      if (!activeRouteId) return;
       const el = document.getElementById('route-name');
+      if (trackCreatorActive) {
+        startContentEdit(el, el.textContent.trim(), false, val => {
+          trackCreatorName = val || null;
+          el.textContent = val || 'New Track';
+        });
+        return;
+      }
+      if (!activeRouteId) return;
       startContentEdit(el, el.textContent.trim(), false, val => saveRouteField('name', val));
     });
     document.getElementById('edit-btn-description').addEventListener('click', () => {
@@ -4603,6 +4829,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const queryBtn = document.getElementById('btn-query');
     queryBtn.addEventListener('click', () => {
       const active = queryBtn.classList.toggle('active');
+      if (active && trackCreatorActive) exitTrackCreatorMode();
       MapManager.setQueryMode(active);
     });
 
