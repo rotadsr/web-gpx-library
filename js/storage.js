@@ -71,23 +71,34 @@ const Storage = (() => {
     });
   }
 
-  /** Serialize the full library to a JSON string for download. */
-  async function exportLibrary() {
+  /**
+   * Serialize the full library to a JSON string for download.
+   * @param {object} extra  - additional top-level collections to bundle in
+   *                          (e.g. { places, placeCategories }); routes always
+   *                          carry their own per-route data (e.g. logbook) as-is.
+   */
+  async function exportLibrary(extra = {}) {
     const routes = await getAllRoutes();
     return JSON.stringify({
       version:    1,
       exportedAt: new Date().toISOString(),
       routes,
+      ...extra,
     }, null, 2);
   }
 
   /**
-   * Import routes from a JSON string.
+   * Import routes (and any bundled extra collections) from a JSON string.
    * @param {string} jsonString  - serialized library (from exportLibrary)
    * @param {'merge'|'overwrite'} mode
+   * @param {function} [onExtra] - called with the full parsed object (minus
+   *                               routes handling, which Storage owns) so the
+   *                               caller can apply its own collections (e.g.
+   *                               places/placeCategories) — not invoked when
+   *                               jsonString is a bare routes array.
    * @returns {number} count of routes imported
    */
-  async function importLibrary(jsonString, mode) {
+  async function importLibrary(jsonString, mode, onExtra) {
     let data;
     try {
       data = JSON.parse(jsonString);
@@ -95,8 +106,10 @@ const Storage = (() => {
       throw new Error('Invalid JSON file');
     }
 
-    const routes = Array.isArray(data) ? data : (data.routes || []);
-    if (!routes.length) throw new Error('No routes found in file');
+    const isBareArray = Array.isArray(data);
+    const routes = isBareArray ? data : (data.routes || []);
+    const hasExtra = !isBareArray && data && (data.places || data.placeCategories);
+    if (!routes.length && !hasExtra) throw new Error('No routes found in file');
 
     if (mode === 'overwrite') {
       await clearAll();
@@ -109,6 +122,9 @@ const Storage = (() => {
       await saveRoute(r);
       count++;
     }
+
+    if (typeof onExtra === 'function' && !isBareArray) onExtra(data);
+
     return count;
   }
 
