@@ -535,10 +535,11 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 
 /* ── Map Toolbar ────────────────────────────────────────────────────────────── */
+/* Opens from the menu icon in the search bar (top-left); hidden by default via [hidden]. */
 #map-toolbar {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 52px;
+  left: 10px;
   z-index: 1001;
   display: flex;
   flex-direction: column;
@@ -548,6 +549,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   box-shadow: 0 2px 10px rgba(0,0,0,0.18);
   padding: 4px;
 }
+#map-toolbar[hidden] { display: none; }
 
 .map-tool {
   width: 32px;
@@ -593,6 +595,23 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   box-shadow: 0 2px 10px rgba(0,0,0,0.18);
   padding: 4px;
 }
+#btn-map-menu {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--text);
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+}
+#btn-map-menu svg { width: 15px; height: 15px; pointer-events: none; }
+#btn-map-menu:hover { background: var(--border); }
+#btn-map-menu.active { background: var(--primary); color: #fff; }
 #map-search-input {
   width: 190px;
   border: none;
@@ -636,11 +655,12 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 #map-search-error[hidden] { display: none; }
 
-/* ── Map Panels (layers + legend) ───────────────────────────────────────────── */
+/* ── Map Panels (layers + legend + places) ───────────────────────────────────── */
+/* Open from buttons inside #map-toolbar, so they sit just to its right. */
 .map-panel {
   position: absolute;
-  top: 10px;
-  right: 50px;   /* snug against toolbar */
+  top: 52px;
+  left: 50px;
   z-index: 1000;
   background: var(--surface);
   border-radius: 8px;
@@ -703,6 +723,93 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 .leg-line {
   width: 20px; height: 3px; border-radius: 2px;
   background: #3b82f6; flex-shrink: 0;
+}
+
+/* ── Places panel (map toolbar) ──────────────────────────────────────────────── */
+.places-visible-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.places-visible-toggle input { cursor: pointer; }
+.places-category-filter {
+  padding: 6px 8px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.places-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.places-cat-row:hover  { background: var(--bg); }
+.places-cat-row.is-active { background: rgba(59,130,246,0.15); color: var(--primary); }
+.places-cat-emoji { font-size: 14px; flex-shrink: 0; }
+.places-cat-count { margin-left: auto; font-size: 11px; color: var(--text-muted); }
+.places-panel-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 13px 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Place marker pins on the map */
+.place-marker-icon { display: flex; align-items: center; justify-content: center; }
+.place-marker-emoji {
+  font-size: 15px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: var(--surface);
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.place-popup { font-size: 13px; }
+.place-popup p { margin: 4px 0 0; color: var(--text-muted); }
+
+/* Add-place mode hint strip */
+#place-add-hint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  padding: 8px 14px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.16);
+  font-size: 13px;
+  color: var(--text);
+}
+#place-add-cancel {
+  background: none;
+  border: none;
+  color: var(--primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
 }
 
 /* ── Privacy zone map tooltip ────────────────────────────────────────────────── */
@@ -1439,6 +1546,43 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   width: 100%;
 }
 
+/* Gradient section inspector — shown after clicking a chart section */
+#gradient-section-info {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.gsi-item {
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gsi-label {
+  font-size: 8.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gsi-value {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Upload Zone ────────────────────────────────────────────────────────────── */
 #upload-zone {
   margin: 6px 12px 12px;
@@ -2021,6 +2165,72 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   min-width: 0;
 }
 
+/* ── Places modal ─────────────────────────────────────────────────────────────── */
+.places-dialog { width: min(480px, 92vw); }
+.places-notes-textarea { resize: vertical; font-family: inherit; }
+.places-categories-list { display: flex; flex-direction: column; gap: 4px; padding: 4px 0 8px; }
+.places-emoji-input { max-width: 56px; text-align: center; flex: 0 0 auto; }
+
+/* ── Logbook modal ────────────────────────────────────────────────────────────── */
+.logbook-dialog { width: min(480px, 92vw); }
+.logbook-add-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+.logbook-date-input { max-width: 160px; }
+.logbook-notes-textarea { resize: vertical; font-family: inherit; }
+
+.logbook-entry {
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.logbook-entry:last-child { border-bottom: none; }
+.logbook-entry-header { display: flex; align-items: center; gap: 8px; }
+.logbook-entry-date { font-weight: 600; font-size: 13px; color: var(--text); }
+.logbook-entry-edit, .logbook-entry-remove {
+  margin-left: auto;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.logbook-entry-edit:hover   { color: var(--primary); background: rgba(59,130,246,0.12); }
+.logbook-entry-remove:hover { color: var(--red);     background: rgba(239,68,68,0.12); }
+.logbook-entry-notes {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+}
+
+/* Logbook entry-count badge on the route-header button */
+#btn-logbook-route { position: relative; }
+.logbook-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  padding: 0 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 /* ── Map picker overlay ──────────────────────────────────────────────────────── */
 .privacy-picker-overlay {
   position: fixed;
@@ -2448,14 +2658,15 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
     height: auto !important;
   }
 
-  /* Map toolbar: tighten on mobile */
+  /* Map toolbar + panels: tighten on mobile, anchored below the search bar */
   #map-toolbar {
-    top: 10px;
-    right: 10px;
+    top: 104px;
+    left: 14px;
     gap: 4px;
     padding: 5px;
   }
   .map-tool { width: 32px; height: 32px; }
+  .map-panel { top: 104px; left: 56px; }
 
   /* Map search: sit below the floating Routes button instead of behind it */
   #map-search-box {
@@ -2464,7 +2675,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
     right: 14px;
   }
   #map-search-input { width: auto; flex: 1; }
-  #map-search-error { top: 104px; left: 14px; right: 14px; max-width: none; }
+  #map-search-error { top: 146px; left: 14px; right: 14px; max-width: none; }
 
   /* Hide horizontal split handle */
   #split-handle { display: none !important; }
