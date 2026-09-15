@@ -117,6 +117,9 @@
 
         <!-- Map search: jump to a place by name -->
         <div id="map-search-box">
+          <button id="btn-map-menu" type="button" title="Map tools" aria-label="Map tools">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
           <input type="text" id="map-search-input" placeholder="Search a place…" aria-label="Search a place">
           <button id="map-search-btn" type="button" title="Search" aria-label="Search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -130,6 +133,12 @@
         <!-- Heatmap route-count badge (visible only in heatmap mode) -->
         <div id="heatmap-badge" style="display:none"></div>
 
+        <!-- Add-place mode hint (visible while placing a pin) -->
+        <div id="place-add-hint" style="display:none">
+          Click the map to place a pin
+          <button id="place-add-cancel" type="button">Cancel</button>
+        </div>
+
         <!-- Piste difficulty legend (visible when ski overlay is active) -->
         <div id="piste-legend" style="display:none">
           <div class="piste-legend-title">Piste difficulty</div>
@@ -141,8 +150,8 @@
           <div class="piste-legend-row"><span class="piste-swatch piste-swatch-lift"></span>Lift</div>
         </div>
 
-        <!-- Vertical toolbar (right side) -->
-        <div id="map-toolbar">
+        <!-- Vertical toolbar (opens from the map menu icon in the search bar; hidden by default) -->
+        <div id="map-toolbar" hidden>
           <button class="map-tool" id="btn-zoom-in" title="Zoom in" aria-label="Zoom in">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
@@ -165,6 +174,8 @@
           </button>
           <div class="tool-sep"></div>
           <button class="map-tool" id="btn-ski" title="Show ski resort pistes for this area" aria-label="Show ski resort pistes for this area">❄️</button>
+          <div class="tool-sep"></div>
+          <button class="map-tool" id="btn-places" title="Places" aria-label="Places">📍</button>
           <div class="tool-sep"></div>
           <button class="map-tool" id="btn-3d" title="3D route view" aria-label="3D route view">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
@@ -196,6 +207,20 @@
             <div class="legend-item"><span class="leg-line"></span>Route track</div>
             <div class="legend-item"><span class="leg-dot" style="background:#f59e0b"></span>Elevation cursor</div>
             <div class="legend-item"><span class="leg-dot" style="background:#3b82f6"></span>Your location</div>
+          </div>
+        </div>
+
+        <!-- Places panel -->
+        <div id="places-panel" class="map-panel" hidden>
+          <div class="panel-header">Places</div>
+          <label class="places-visible-toggle">
+            <input type="checkbox" id="places-visible-toggle" checked />
+            Show places on map
+          </label>
+          <div id="places-category-filter" class="places-category-filter"></div>
+          <div class="places-panel-actions">
+            <button id="btn-place-add" class="privacy-option-btn">＋ Add place</button>
+            <button id="btn-places-manage" class="privacy-option-btn">Manage places…</button>
           </div>
         </div>
       </div>
@@ -234,6 +259,10 @@
               </button>
               <button id="btn-reverse-route" class="btn-share-route" title="Reverse route direction" aria-label="Reverse route direction">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </button>
+              <button id="btn-logbook-route" class="btn-share-route" title="Logbook" aria-label="Logbook">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                <span id="logbook-badge" class="logbook-badge" hidden></span>
               </button>
               <div class="btn-download-wrap">
                 <button id="btn-download-route" class="btn-share-route" title="Download" aria-label="Download">
@@ -322,6 +351,24 @@
           </div>
           <div id="chart-wrapper">
             <canvas id="elevation-chart"></canvas>
+          </div>
+          <div id="gradient-section-info" style="display:none">
+            <div class="gsi-item">
+              <span class="gsi-label">Section</span>
+              <span class="gsi-value" id="gsi-range">—</span>
+            </div>
+            <div class="gsi-item">
+              <span class="gsi-label">Distance</span>
+              <span class="gsi-value" id="gsi-distance">—</span>
+            </div>
+            <div class="gsi-item">
+              <span class="gsi-label">Avg Gradient</span>
+              <span class="gsi-value" id="gsi-gradient">—</span>
+            </div>
+            <div class="gsi-item">
+              <span class="gsi-label">Elev. Range</span>
+              <span class="gsi-value" id="gsi-elevrange">—</span>
+            </div>
           </div>
         </div>
 
@@ -561,6 +608,71 @@
   <div id="privacy-picker-map" class="privacy-picker-map"></div>
 </div>
 
+<!-- ── Places Modal ─────────────────────────────────────────────────────── -->
+<div id="places-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="places-modal-title">
+  <div class="share-dialog places-dialog">
+    <div class="share-dialog-header">
+      <h3 id="places-modal-title">Places</h3>
+      <button id="places-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">Pins are saved in this browser and shown on the map regardless of which route is open.</p>
+
+    <div id="places-list" class="privacy-zones-list"></div>
+
+    <div class="privacy-add-label">Add a place</div>
+    <div class="privacy-search-row">
+      <input type="text" id="places-address-input" class="share-url-input" placeholder="Search address…" autocomplete="off" spellcheck="false" />
+      <button id="places-search-btn" class="share-copy-btn">Search</button>
+    </div>
+    <div class="privacy-options-row">
+      <button id="places-pick-btn" class="privacy-option-btn">📍 Click on map</button>
+      <button id="places-detect-btn" class="privacy-option-btn">Use my location</button>
+    </div>
+
+    <div id="place-pending" class="privacy-pending-zone" style="display:none">
+      <div class="privacy-pending-header">
+        <span class="privacy-location-icon">📍</span>
+        <span id="place-pending-coords" class="privacy-pending-name"></span>
+      </div>
+      <select id="place-category-select" class="share-url-input"></select>
+      <input type="text" id="place-name-input" class="share-url-input" placeholder="Name (e.g. Fuente del Roble)" autocomplete="off" spellcheck="false" />
+      <textarea id="place-notes-input" class="share-url-input places-notes-textarea" placeholder="Notes (optional)" rows="3"></textarea>
+      <button id="place-save-btn" class="share-copy-btn privacy-add-btn">Save place</button>
+    </div>
+
+    <p id="places-error" class="pat-error"></p>
+
+    <div class="privacy-add-label">Custom categories</div>
+    <div id="place-categories-list" class="places-categories-list"></div>
+    <div class="privacy-search-row">
+      <input type="text" id="place-cat-emoji-input" class="share-url-input places-emoji-input" placeholder="🏷️" maxlength="4" />
+      <input type="text" id="place-cat-name-input" class="share-url-input" placeholder="Category name" autocomplete="off" />
+      <button id="place-cat-add-btn" class="share-copy-btn">Add category</button>
+    </div>
+
+    <p class="pat-privacy-note">Places and categories are stored only in this browser (and included in your library backup/export).</p>
+  </div>
+</div>
+
+<!-- ── Logbook Modal ────────────────────────────────────────────────────── -->
+<div id="logbook-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="logbook-modal-title">
+  <div class="share-dialog logbook-dialog">
+    <div class="share-dialog-header">
+      <h3 id="logbook-modal-title">Logbook</h3>
+      <button id="logbook-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p id="logbook-modal-hint" class="share-dialog-hint" style="display:none">Save this route to your library to keep a logbook.</p>
+
+    <div id="logbook-list" class="privacy-zones-list"></div>
+
+    <div id="logbook-add-row" class="logbook-add-row">
+      <input type="date" id="logbook-date-input" class="share-url-input logbook-date-input" />
+      <textarea id="logbook-notes-input" class="share-url-input logbook-notes-textarea" placeholder="e.g. Better for summer, start 10AM–12PM to avoid the heat" rows="3"></textarea>
+      <button id="logbook-add-btn" class="share-copy-btn privacy-add-btn">Add entry</button>
+    </div>
+  </div>
+</div>
+
 <!-- ── GPS Send Landing Page ─────────────────────────────────────────────── -->
 <div id="gpx-send-screen" style="display:none" aria-live="polite">
   <div class="gpx-send-card">
@@ -588,6 +700,7 @@
 <script src="js/trackCreator.js"></script>
 <script src="js/mapManager.js"></script>
 <script src="js/activities.js"></script>
+<script src="js/places.js"></script>
 <script src="js/view3d.js"></script>
 <script src="js/app.js"></script>
 
