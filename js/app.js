@@ -51,6 +51,36 @@
     return [...new Set([...fromRoutes, ...customFolders])].sort();
   }
 
+  // Escapes text for safe interpolation into innerHTML (used for any
+  // user-typed content, e.g. place names/notes/custom category labels).
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  // Places (global map pins) — filter/mode state
+  let activePlaceCategoryFilter = null; // null = show all categories
+  let placeAddModeActive        = false;
+  let editingPlaceId            = null; // place being edited via the composer, or null
+  let placesVisible = localStorage.getItem('gpxlib-places-visible') !== 'false'; // default: visible
+
+  function setPlacesVisible(visible) {
+    placesVisible = visible;
+    localStorage.setItem('gpxlib-places-visible', String(visible));
+    refreshPlacesOnMap();
+  }
+
+  // Single choke point for (re)rendering places on the map — respects the
+  // visibility toggle so every call site doesn't need to check it itself.
+  function refreshPlacesOnMap() {
+    if (placesVisible) {
+      MapManager.updatePlaces(getPlaces(), activePlaceCategoryFilter);
+    } else {
+      MapManager.hidePlaces();
+    }
+  }
+
   // Fallback speeds (km/h) used when GPX has no timestamps
   const DEFAULT_SPEEDS = {
     hiking:         4,
@@ -68,7 +98,8 @@
 
   // Chart view mode
   let chartMode        = 'elevation'; // 'elevation' | 'gradient'
-  let chartSegmentData = null;        // { profile, gradients, dFactor, eFactor } for plugin
+  let chartSegmentData = null;        // { profile, sections, sectionGradientAt, dFactor, eFactor } for plugin/click
+  let chartClickHandler = null;       // current canvas click listener, torn down before each re-render
 
   // Weather state
   let currentWeatherData = null; // raw daily object from Open-Meteo (metric)
@@ -329,7 +360,7 @@
 
   async function doExport() {
     try {
-      const json = await Storage.exportLibrary();
+      const json = await Storage.exportLibrary({ places: getPlaces(), placeCategories: getCustomPlaceCategories() });
       const blob = new Blob([json], { type: 'application/json' });
       const url  = URL.createObjectURL(blob);
       const date = new Date().toISOString().slice(0, 10);
@@ -355,7 +386,10 @@
   function doImportText(text) {
     const run = async (mode) => {
       try {
-        const count = await Storage.importLibrary(text, mode);
+        const count = await Storage.importLibrary(text, mode, (data) => {
+          applyImportedPlaces(data.places, mode);
+          applyImportedPlaceCategories(data.placeCategories, mode);
+        });
         savedRoutes = (await Storage.getAllRoutes()).map(r => ({ ...r, source: 'saved' }));
         if (savedRoutes.length > 0) { backupNeeded = true; scheduleBackup(); }
         buildCategoryPills();
@@ -489,7 +523,10 @@
         id, source: 'saved', createdAt: new Date().toISOString(),
       });
       uploadedRoutes = uploadedRoutes.filter(r => r.id !== route.id);
-      if (activeRouteId === route.id) activeRouteId = id;
+      if (activeRouteId === route.id) {
+        activeRouteId = id;
+        updateLogbookBadge(savedRoutes[savedRoutes.length - 1]);
+      }
       backupNeeded = true;
       scheduleBackup();
       buildCategoryPills();
@@ -563,6 +600,7 @@
 
   function enterTrackCreatorMode() {
     if (trackCreatorActive) return;
+    if (placeAddModeActive) exitPlaceAddMode();
     trackCreatorActive = true;
 
     document.querySelectorAll('.route-item').forEach(el => el.classList.remove('active'));
@@ -1922,6 +1960,21 @@
     });
   }
 
+  // ── Shared mini-map basemap (privacy picker / share-trim picker) ───────────────
+
+  // Adds the Esri Light Gray Canvas base + label-reference tiles to a standalone
+  // Leaflet map (used by the privacy zone picker and the share/trim picker,
+  // which each run their own isolated L.map instance outside MapManager).
+  function addLightGrayBasemap(targetMap) {
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      attribution: 'Tiles &copy; Esri — Esri, HERE, Garmin, FAO, NOAA, USGS, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS User Community',
+    }).addTo(targetMap);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+    }).addTo(targetMap);
+  }
+
   // ── Privacy Zones ─────────────────────────────────────────────────────────────
 
   const ZONES_KEY = 'gpxlib-privacy-zones';
@@ -2222,10 +2275,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     const mapEl = document.getElementById('privacy-picker-map');
     pickerMap = L.map(mapEl, { zoomControl: true });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd', maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(pickerMap);
+    addLightGrayBasemap(pickerMap);
 
     for (const z of getPrivacyZones()) {
       L.circle([z.lat, z.lon], {
@@ -2299,10 +2349,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     const mapEl = document.getElementById('privacy-picker-map');
     pickerMap = L.map(mapEl, { zoomControl: true });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd', maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(pickerMap);
+    addLightGrayBasemap(pickerMap);
 
     for (const z of getPrivacyZones().filter(z => z.id !== zone.id)) {
       L.circle([z.lat, z.lon], {
@@ -2393,6 +2440,459 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       closeMapPicker();
       _showPendingZone();
     }
+  }
+
+  // ── Places (global map pins) ────────────────────────────────────────────────
+
+  const PLACES_KEY = 'gpxlib-places';
+  let placePending = null; // { lat, lon, name?, category?, notes? } | null
+
+  function getPlaces() {
+    try { return JSON.parse(localStorage.getItem(PLACES_KEY)) || []; } catch { return []; }
+  }
+
+  function savePlaces(places) {
+    localStorage.setItem(PLACES_KEY, JSON.stringify(places));
+  }
+
+  function addPlace(place) {
+    const places = getPlaces();
+    places.push({ ...place, id: Date.now() });
+    savePlaces(places);
+    return places;
+  }
+
+  function removePlace(id) {
+    const places = getPlaces().filter(p => p.id !== id);
+    savePlaces(places);
+    return places;
+  }
+
+  function updatePlace(id, updates) {
+    const places = getPlaces().map(p => p.id === id ? { ...p, ...updates } : p);
+    savePlaces(places);
+    return places;
+  }
+
+  // ── Import merge/overwrite for places + custom categories ──
+
+  function applyImportedPlaces(places, mode) {
+    if (!places || !places.length) return;
+    if (mode === 'overwrite') {
+      savePlaces(places);
+    } else {
+      const existing = getPlaces();
+      const byId = new Map(existing.map(p => [p.id, p]));
+      places.forEach(p => byId.set(p.id, p));
+      savePlaces([...byId.values()]);
+    }
+    refreshPlacesOnMap();
+    if (document.getElementById('places-modal').style.display === 'flex') renderPlacesList();
+  }
+
+  function applyImportedPlaceCategories(cats, mode) {
+    if (!cats || !cats.length) return;
+    if (mode === 'overwrite') {
+      saveCustomPlaceCategories(cats);
+    } else {
+      const existing = getCustomPlaceCategories();
+      const byKey = new Map(existing.map(c => [c.key, c]));
+      cats.forEach(c => byKey.set(c.key, c));
+      saveCustomPlaceCategories([...byKey.values()]);
+    }
+    if (document.getElementById('places-modal').style.display === 'flex') {
+      renderPlaceCategoriesManager();
+      renderPlaceCategorySelect();
+    }
+    renderPlacesCategoryFilter();
+  }
+
+  // ── Places toolbar panel ──
+
+  function renderPlacesCategoryFilter() {
+    const toggle = document.getElementById('places-visible-toggle');
+    if (toggle) toggle.checked = placesVisible;
+
+    const container = document.getElementById('places-category-filter');
+    if (!container) return;
+    const cats   = getAllPlaceCategories();
+    const places = getPlaces();
+    container.innerHTML = Object.entries(cats).map(([key, cat]) => {
+      const count  = places.filter(p => p.category === key).length;
+      const active = activePlaceCategoryFilter === key;
+      return `<div class="places-cat-row${active ? ' is-active' : ''}" data-key="${escapeHtml(key)}">
+        <span class="places-cat-emoji">${escapeHtml(cat.emoji)}</span>
+        <span>${escapeHtml(cat.name)}</span>
+        <span class="places-cat-count">${count}</span>
+      </div>`;
+    }).join('');
+    container.querySelectorAll('.places-cat-row').forEach(row => {
+      row.addEventListener('click', () => {
+        const key = row.dataset.key;
+        activePlaceCategoryFilter = activePlaceCategoryFilter === key ? null : key;
+        renderPlacesCategoryFilter();
+        refreshPlacesOnMap();
+      });
+    });
+  }
+
+  // ── Add-place mode (click on main map) ──
+
+  function enterPlaceAddMode() {
+    if (placeAddModeActive) return;
+    if (trackCreatorActive) exitTrackCreatorMode();
+    const queryBtn = document.getElementById('btn-query');
+    if (queryBtn && queryBtn.classList.contains('active')) {
+      queryBtn.classList.remove('active');
+      MapManager.setQueryMode(false);
+    }
+    placeAddModeActive = true;
+    document.getElementById('place-add-hint').style.display = 'flex';
+    MapManager.setPlaceAddMode(true, (latlng) => handlePlaceMapClick(latlng));
+  }
+
+  function exitPlaceAddMode() {
+    if (!placeAddModeActive) return;
+    placeAddModeActive = false;
+    MapManager.setPlaceAddMode(false);
+    document.getElementById('place-add-hint').style.display = 'none';
+  }
+
+  function handlePlaceMapClick(latlng) {
+    exitPlaceAddMode();
+    placePending = { lat: latlng.lat, lon: latlng.lng };
+    editingPlaceId = null;
+    document.getElementById('places-modal').style.display = 'flex';
+    showPlacePending();
+  }
+
+  // ── Places modal ──
+
+  function openPlacesModal() {
+    placePending = null;
+    editingPlaceId = null;
+    document.getElementById('places-error').textContent = '';
+    document.getElementById('places-address-input').value = '';
+    hidePlacePending();
+    renderPlacesList();
+    renderPlaceCategoriesManager();
+    document.getElementById('places-modal').style.display = 'flex';
+  }
+
+  function closePlacesModal() {
+    document.getElementById('places-modal').style.display = 'none';
+    placePending = null;
+    editingPlaceId = null;
+  }
+
+  function renderPlacesList() {
+    const places = [...getPlaces()].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    const list = document.getElementById('places-list');
+    if (!places.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No places added yet.</p>';
+      return;
+    }
+    list.innerHTML = places.map(p => {
+      const cat = getPlaceCategory(p.category);
+      return `<div class="privacy-zone-item">
+        <span class="privacy-zone-icon">${escapeHtml(cat.emoji)}</span>
+        <span class="privacy-zone-name" title="${escapeHtml(cat.name)}">${escapeHtml(p.name || 'Unnamed place')}</span>
+        <button class="privacy-zone-edit" data-id="${p.id}" title="Edit place">✎</button>
+        <button class="privacy-zone-remove" data-id="${p.id}" title="Remove place">✕</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.privacy-zone-remove').forEach(btn => {
+      armDeleteBtn(btn, () => {
+        removePlace(Number(btn.dataset.id));
+        renderPlacesList();
+        renderPlacesCategoryFilter();
+        refreshPlacesOnMap();
+      });
+    });
+    list.querySelectorAll('.privacy-zone-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const place = getPlaces().find(p => p.id === Number(btn.dataset.id));
+        if (!place) return;
+        editingPlaceId = place.id;
+        placePending = { lat: place.lat, lon: place.lon, name: place.name, category: place.category, notes: place.notes };
+        showPlacePending();
+      });
+    });
+  }
+
+  function renderPlaceCategorySelect() {
+    const select = document.getElementById('place-category-select');
+    if (!select) return;
+    const cats = getAllPlaceCategories();
+    const current = select.value;
+    select.innerHTML = Object.entries(cats).map(([key, cat]) =>
+      `<option value="${escapeHtml(key)}">${escapeHtml(cat.emoji)} ${escapeHtml(cat.name)}</option>`
+    ).join('');
+    if (current && cats[current]) select.value = current;
+  }
+
+  function showPlacePending() {
+    renderPlaceCategorySelect();
+    document.getElementById('place-pending-coords').textContent =
+      `${placePending.lat.toFixed(5)}, ${placePending.lon.toFixed(5)}`;
+    document.getElementById('place-category-select').value = placePending.category || 'other';
+    document.getElementById('place-name-input').value  = placePending.name  || '';
+    document.getElementById('place-notes-input').value = placePending.notes || '';
+    document.getElementById('place-save-btn').textContent = editingPlaceId !== null ? 'Save changes' : 'Save place';
+    document.getElementById('place-pending').style.display = 'flex';
+  }
+
+  function hidePlacePending() {
+    document.getElementById('place-pending').style.display = 'none';
+    placePending = null;
+    editingPlaceId = null;
+  }
+
+  function handlePlaceComposerSave() {
+    if (!placePending) return;
+    const category = document.getElementById('place-category-select').value;
+    const name      = document.getElementById('place-name-input').value.trim();
+    const notes     = document.getElementById('place-notes-input').value.trim() || null;
+
+    if (editingPlaceId !== null) {
+      updatePlace(editingPlaceId, { category, name, notes });
+    } else {
+      addPlace({ lat: placePending.lat, lon: placePending.lon, name, category, notes, createdAt: new Date().toISOString() });
+    }
+    refreshPlacesOnMap();
+    renderPlacesList();
+    renderPlacesCategoryFilter();
+    hidePlacePending();
+    showShareToast(editingPlaceId !== null ? 'Place updated.' : 'Place added.');
+  }
+
+  // ── Places: address search / geolocation (mirrors Privacy Zones' flows) ──
+
+  async function handlePlacesAddressSearch() {
+    const query = document.getElementById('places-address-input').value.trim();
+    const errEl = document.getElementById('places-error');
+    const btn   = document.getElementById('places-search-btn');
+    if (!query) return;
+    errEl.textContent = '';
+    btn.disabled = true;
+    btn.textContent = '…';
+    try {
+      const resp = await fetch(
+        'https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(query)
+        + '&format=json&limit=1',
+        { headers: { 'Accept-Language': navigator.language || 'en' } }
+      );
+      if (!resp.ok) throw new Error('Geocoding service unavailable.');
+      const data = await resp.json();
+      if (!data.length) throw new Error('Address not found. Try a more specific search.');
+      editingPlaceId = null;
+      placePending = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), category: 'other' };
+      showPlacePending();
+    } catch (err) {
+      errEl.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Search';
+    }
+  }
+
+  function handlePlacesDetectLocation() {
+    const errEl = document.getElementById('places-error');
+    if (!navigator.geolocation) { errEl.textContent = 'Geolocation not supported by your browser.'; return; }
+    const btn = document.getElementById('places-detect-btn');
+    btn.disabled = true;
+    btn.textContent = 'Detecting…';
+    errEl.textContent = '';
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const { latitude: lat, longitude: lon } = pos.coords;
+        editingPlaceId = null;
+        placePending = { lat, lon, category: 'other' };
+        showPlacePending();
+        btn.textContent = 'Use my location';
+        btn.disabled = false;
+      },
+      () => {
+        errEl.textContent = 'Could not detect location. Try searching or clicking on the map.';
+        btn.textContent = 'Use my location';
+        btn.disabled = false;
+      }
+    );
+  }
+
+  // ── Places: custom category manager ──
+
+  function renderPlaceCategoriesManager() {
+    const list = document.getElementById('place-categories-list');
+    if (!list) return;
+    const custom = getCustomPlaceCategories();
+    if (!custom.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No custom categories yet.</p>';
+      return;
+    }
+    list.innerHTML = custom.map(c => `
+      <div class="privacy-zone-item">
+        <span class="privacy-zone-icon">${escapeHtml(c.emoji)}</span>
+        <span class="privacy-zone-name">${escapeHtml(c.name)}</span>
+        <button class="place-cat-remove" data-key="${escapeHtml(c.key)}" title="Remove category">✕</button>
+      </div>`).join('');
+    list.querySelectorAll('.place-cat-remove').forEach(btn => {
+      armDeleteBtn(btn, () => {
+        removePlaceCategory(btn.dataset.key);
+        renderPlaceCategoriesManager();
+        renderPlaceCategorySelect();
+        renderPlacesCategoryFilter();
+      });
+    });
+  }
+
+  // ── Logbook (per-route journal entries) ─────────────────────────────────────
+
+  function getRouteLogbook(route) {
+    return (route && route.logbook) || [];
+  }
+
+  async function saveRouteLogbook(routeId, entries) {
+    const route = savedRoutes.find(r => r.id === routeId)
+                || uploadedRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    route.logbook = entries;
+    if (route.source === 'saved') {
+      try {
+        await Storage.saveRoute({ ...route });
+        const idx = savedRoutes.findIndex(r => r.id === routeId);
+        if (idx >= 0) savedRoutes[idx] = route;
+      } catch (err) {
+        console.error('saveRouteLogbook error:', err);
+        showShareToast('Could not save logbook: ' + err.message);
+        return;
+      }
+    } else {
+      const idx = uploadedRoutes.findIndex(r => r.id === routeId);
+      if (idx >= 0) uploadedRoutes[idx] = route;
+    }
+    backupNeeded = true;
+    scheduleBackup();
+    updateLogbookBadge(route);
+  }
+
+  function addLogbookEntry(routeId, date, notes) {
+    const route = savedRoutes.find(r => r.id === routeId) || uploadedRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    const entries = getRouteLogbook(route).slice();
+    entries.push({ id: Date.now(), date, notes, createdAt: new Date().toISOString() });
+    saveRouteLogbook(routeId, entries);
+  }
+
+  function updateLogbookEntry(routeId, entryId, updates) {
+    const route = savedRoutes.find(r => r.id === routeId) || uploadedRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    const entries = getRouteLogbook(route).map(e => e.id === entryId ? { ...e, ...updates } : e);
+    saveRouteLogbook(routeId, entries);
+  }
+
+  function removeLogbookEntry(routeId, entryId) {
+    const route = savedRoutes.find(r => r.id === routeId) || uploadedRoutes.find(r => r.id === routeId);
+    if (!route) return;
+    const entries = getRouteLogbook(route).filter(e => e.id !== entryId);
+    saveRouteLogbook(routeId, entries);
+  }
+
+  function getActiveRoute() {
+    return savedRoutes.find(r => r.id === activeRouteId) || uploadedRoutes.find(r => r.id === activeRouteId);
+  }
+
+  function openLogbookModal() {
+    if (!activeRouteId) return;
+    const route = getActiveRoute();
+    if (!route) return;
+    document.getElementById('logbook-modal-hint').style.display = route.source === 'saved' ? 'none' : '';
+    document.getElementById('logbook-add-row').style.display    = route.source === 'saved' ? '' : 'none';
+    document.getElementById('logbook-date-input').value  = new Date().toISOString().slice(0, 10);
+    document.getElementById('logbook-notes-input').value = '';
+    const addBtn = document.getElementById('logbook-add-btn');
+    delete addBtn.dataset.editingId;
+    addBtn.textContent = 'Add entry';
+    renderLogbookList(route);
+    document.getElementById('logbook-modal').style.display = 'flex';
+  }
+
+  function closeLogbookModal() {
+    document.getElementById('logbook-modal').style.display = 'none';
+  }
+
+  function renderLogbookList(route) {
+    const entries = [...getRouteLogbook(route)].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const list = document.getElementById('logbook-list');
+    if (!entries.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No logbook entries yet.</p>';
+      return;
+    }
+    list.innerHTML = entries.map(e => `
+      <div class="logbook-entry" data-id="${e.id}">
+        <div class="logbook-entry-header">
+          <span class="logbook-entry-date">${escapeHtml(e.date)}</span>
+          <button class="logbook-entry-edit" data-id="${e.id}" title="Edit">✎</button>
+          <button class="logbook-entry-remove" data-id="${e.id}" title="Delete">${SVG_TRASH}</button>
+        </div>
+        <p class="logbook-entry-notes">${escapeHtml(e.notes || '')}</p>
+      </div>`).join('');
+
+    list.querySelectorAll('.logbook-entry-remove').forEach(btn => {
+      armDeleteBtn(btn, () => {
+        removeLogbookEntry(activeRouteId, Number(btn.dataset.id));
+        renderLogbookList(getActiveRoute());
+      });
+    });
+    list.querySelectorAll('.logbook-entry-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.id);
+        const entry = entries.find(e => e.id === id);
+        if (!entry) return;
+        document.getElementById('logbook-date-input').value  = entry.date;
+        document.getElementById('logbook-notes-input').value = entry.notes || '';
+        const addBtn = document.getElementById('logbook-add-btn');
+        addBtn.dataset.editingId = id;
+        addBtn.textContent = 'Save changes';
+      });
+    });
+  }
+
+  function handleLogbookSave() {
+    const btn   = document.getElementById('logbook-add-btn');
+    const date  = document.getElementById('logbook-date-input').value;
+    const notes = document.getElementById('logbook-notes-input').value.trim();
+    if (!date || !activeRouteId) return;
+    const editingId = btn.dataset.editingId ? Number(btn.dataset.editingId) : null;
+    if (editingId) {
+      updateLogbookEntry(activeRouteId, editingId, { date, notes });
+      delete btn.dataset.editingId;
+      btn.textContent = 'Add entry';
+    } else {
+      addLogbookEntry(activeRouteId, date, notes);
+    }
+    document.getElementById('logbook-date-input').value  = new Date().toISOString().slice(0, 10);
+    document.getElementById('logbook-notes-input').value = '';
+    renderLogbookList(getActiveRoute());
+    showShareToast(editingId ? 'Logbook entry updated.' : 'Logbook entry added.');
+  }
+
+  function updateLogbookBadge(route) {
+    const btn   = document.getElementById('btn-logbook-route');
+    const badge = document.getElementById('logbook-badge');
+    if (!btn || !badge) return;
+    const count = getRouteLogbook(route).length;
+    if (count > 0) {
+      badge.textContent = String(count);
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+    const isSaved = route.source === 'saved';
+    btn.disabled = !isSaved;
+    btn.title = isSaved
+      ? 'Logbook' + (count ? ` (${count} entries)` : '')
+      : 'Save this route to your library to keep a logbook';
   }
 
   // ── Share via GitHub Gist ─────────────────────────────────────────────────────
@@ -2644,10 +3144,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     const mapEl = document.getElementById('share-trim-map');
     trimMap = L.map(mapEl, { zoomControl: true });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      subdomains: 'abcd', maxZoom: 20,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    }).addTo(trimMap);
+    addLightGrayBasemap(trimMap);
 
     for (const z of getPrivacyZones()) {
       L.circle([z.lat, z.lon], {
@@ -3248,7 +3745,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     updateBackupStatus('syncing');
 
     try {
-      const json    = await Storage.exportLibrary();
+      const json    = await Storage.exportLibrary({ places: getPlaces(), placeCategories: getCustomPlaceCategories() });
       const content = utf8ToBase64(json);
       const path    = 'gpx-library.json';
       const apiBase = 'https://api.github.com/repos/' + repo + '/contents/' + path;
@@ -3454,6 +3951,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       // Reversed-from-original badge
       setReversedBadge(!!route.reversed);
 
+      // Logbook button state/badge
+      updateLogbookBadge(route);
+
       // Geocode centroid for location search (lazy, rate-limited)
       if (parsed.points.length) {
         const cLat = parsed.points.reduce((s, p) => s + p.lat, 0) / parsed.points.length;
@@ -3556,6 +4056,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       .forEach(id => { document.getElementById(id).textContent = '…'; });
     document.getElementById('override-bar').style.display = 'none';
     document.querySelectorAll('[data-editable]').forEach(c => c.classList.remove('is-overridden'));
+    hideGradientSectionInfo();
     // Reset weather
     currentWeatherData = null;
     selectedDayIndex   = null;
@@ -3734,13 +4235,96 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     return `rgb(${r},${g},${b})`;
   }
 
+  // Merges consecutive same-direction profile steps into sections, so a single
+  // climb/descent gets one averaged gradient instead of one value per tiny
+  // downsampled step. Direction thresholds match gradientSegmentColor's
+  // flat/up/down bands (±0.5%). Returns [{ startIdx, endIdx, direction,
+  // startDist, endDist, avgGradient, elevationRange }] — dist/ele always in
+  // raw metric units (profile is metric; unit conversion happens on display).
+  function buildGradientSections(profile) {
+    const runs = [];
+    let current = null;
+
+    for (let i = 1; i < profile.length; i++) {
+      const dElev = profile[i].ele - profile[i - 1].ele;
+      const dDist = (profile[i].dist - profile[i - 1].dist) * 1000; // km → m
+      const grad  = dDist > 0.5 ? (dElev / dDist) * 100 : 0;
+      const direction = grad > 0.5 ? 'up' : grad < -0.5 ? 'down' : 'flat';
+
+      if (!current || current.direction !== direction) {
+        if (current) runs.push(current);
+        current = { startIdx: i - 1, endIdx: i, direction };
+      } else {
+        current.endIdx = i;
+      }
+    }
+    if (current) runs.push(current);
+
+    return runs.map(run => {
+      const startP = profile[run.startIdx];
+      const endP   = profile[run.endIdx];
+      const dDistM = (endP.dist - startP.dist) * 1000;
+      const dElevM = endP.ele - startP.ele;
+      const avgGradient = dDistM > 0 ? (dElevM / dDistM) * 100 : 0;
+
+      let minEle = startP.ele, maxEle = startP.ele;
+      for (let i = run.startIdx; i <= run.endIdx; i++) {
+        if (profile[i].ele < minEle) minEle = profile[i].ele;
+        if (profile[i].ele > maxEle) maxEle = profile[i].ele;
+      }
+
+      return {
+        startIdx: run.startIdx,
+        endIdx: run.endIdx,
+        direction: run.direction,
+        startDist: startP.dist,
+        endDist: endP.dist,
+        avgGradient,
+        elevationRange: maxEle - minEle,
+      };
+    });
+  }
+
+  // Builds a per-step (profile[i-1]→profile[i]) lookup of the average gradient
+  // of the section that step belongs to — used both to colour the chart in
+  // uniform bands and to keep the hover tooltip consistent with those bands.
+  function buildStepSectionGradients(profile, sections) {
+    const stepGradients = new Array(profile.length).fill(null);
+    sections.forEach(sec => {
+      for (let i = sec.startIdx + 1; i <= sec.endIdx; i++) stepGradients[i] = sec.avgGradient;
+    });
+    return stepGradients;
+  }
+
+  function findSectionForProfileIndex(sections, index) {
+    return sections.find(sec => index >= sec.startIdx && index <= sec.endIdx) || null;
+  }
+
+  function showGradientSectionInfo(section, dFactor, eFactor, distUnit, elevUnit) {
+    const el = document.getElementById('gradient-section-info');
+    if (!el) return;
+    const startDist  = section.startDist * dFactor;
+    const endDist    = section.endDist * dFactor;
+    const sectionLenM = (section.endDist - section.startDist) * 1000; // section length in metres, unit-independent of km/mi rounding
+    document.getElementById('gsi-range').textContent     = `${startDist.toFixed(2)}–${endDist.toFixed(2)} ${distUnit}`;
+    document.getElementById('gsi-distance').textContent  = fmtElev(sectionLenM); // short section length reads better as m/ft than km/mi
+    document.getElementById('gsi-gradient').textContent  = `${section.avgGradient >= 0 ? '+' : ''}${section.avgGradient.toFixed(1)}%`;
+    document.getElementById('gsi-elevrange').textContent = `${Math.round(section.elevationRange * eFactor)} ${elevUnit}`;
+    el.style.display = 'flex';
+  }
+
+  function hideGradientSectionInfo() {
+    const el = document.getElementById('gradient-section-info');
+    if (el) el.style.display = 'none';
+  }
+
   // Chart.js plugin — draws gradient-colored trapezoids in gradient mode
   Chart.register({
     id: 'gradientBands',
     beforeDatasetsDraw(chart) {
       if (chartMode !== 'gradient' || !chartSegmentData) return;
       const { ctx, chartArea, scales } = chart;
-      const { profile, gradients, dFactor, eFactor } = chartSegmentData;
+      const { profile, sectionGradientAt, dFactor, eFactor } = chartSegmentData;
       const xScale = scales.x;
       const yScale = scales.y;
       const yBase  = yScale.getPixelForValue(yScale.min);
@@ -3756,7 +4340,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         const y0 = yScale.getPixelForValue(Math.round(profile[i - 1].ele   * eFactor));
         const y1 = yScale.getPixelForValue(Math.round(profile[i].ele       * eFactor));
 
-        ctx.fillStyle = gradientSegmentColor(gradients[i]);
+        ctx.fillStyle = gradientSegmentColor(sectionGradientAt[i]);
         ctx.beginPath();
         ctx.moveTo(x0, yBase);
         ctx.lineTo(x0, y0);
@@ -3786,21 +4370,20 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const labels  = profile.map(p => parseFloat((p.dist * dFactor).toFixed(2)));
     const values  = profile.map(p => Math.round(p.ele * eFactor));
 
-    // Gradient at each profile point (always in %, computed from raw metric data)
-    const gradients = profile.map((p, i) => {
-      if (i === 0) return null;
-      const dElev = p.ele - profile[i - 1].ele;                  // m
-      const dDist = (p.dist - profile[i - 1].dist) * 1000;       // km → m
-      return dDist > 0.5 ? (dElev / dDist) * 100 : null;
-    });
+    // Merge consecutive same-direction steps into sections so a single climb
+    // gets one averaged gradient instead of one value per downsampled step.
+    const sections = buildGradientSections(profile);
+    const sectionGradientAt = buildStepSectionGradients(profile, sections);
     const maxDist = parseFloat((stats.totalDistance * dFactor).toFixed(2));
 
-    // Expose segment data for the gradient-bands plugin
-    chartSegmentData = { profile, gradients, dFactor, eFactor };
+    // Expose segment data for the gradient-bands plugin + click handler
+    chartSegmentData = { profile, sections, sectionGradientAt, dFactor, eFactor };
+    hideGradientSectionInfo();
 
     if (elevationChart) { elevationChart.destroy(); elevationChart = null; }
 
-    const ctx = document.getElementById('elevation-chart').getContext('2d');
+    const canvasEl = document.getElementById('elevation-chart');
+    const ctx = canvasEl.getContext('2d');
     const isGradient = chartMode === 'gradient';
 
     const areaGradient = ctx.createLinearGradient(0, 0, 0, 200);
@@ -3844,11 +4427,11 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
               title: items => `${items[0].label} ${distUnit}`,
               label: item  => `${item.raw} ${elevUnit}`,
               afterLabel: item => {
-                const g = gradients[item.dataIndex];
+                const g = sectionGradientAt[item.dataIndex];
                 if (g === null || g === undefined) return null;
                 const sign  = g >= 0 ? '+' : '';
                 const arrow = g >  1 ? ' ↑' : g < -1 ? ' ↓' : ' →';
-                return `${sign}${g.toFixed(1)}%${arrow}`;
+                return `${sign}${g.toFixed(1)}% avg${arrow}`;
               },
             },
             backgroundColor: 'rgba(15,23,42,0.85)',
@@ -3889,9 +4472,25 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
             MapManager.hideHighlight();
             View3D.hideHighlight();
           }
-        }
+        },
       }
     });
+
+    // Click-to-inspect any section (uphill, downhill, or flat). Not wired via Chart.js's own
+    // `options.onClick` — that callback doesn't fire for clicks that land
+    // on the canvas but outside its computed chart area (e.g. axis-label
+    // padding), which left stale section info on screen. A plain listener
+    // on the canvas covers the whole element and is explicitly torn down
+    // before each re-render to avoid stacking duplicate handlers.
+    if (chartClickHandler) canvasEl.removeEventListener('click', chartClickHandler);
+    chartClickHandler = (event) => {
+      const points = elevationChart.getElementsAtEventForMode(event, 'index', { intersect: false }, false);
+      if (!points.length) { hideGradientSectionInfo(); return; }
+      const section = findSectionForProfileIndex(sections, points[0].index);
+      if (!section) { hideGradientSectionInfo(); return; }
+      showGradientSectionInfo(section, dFactor, eFactor, distUnit, elevUnit);
+    };
+    canvasEl.addEventListener('click', chartClickHandler);
   }
 
   // ── Weather forecast (Open-Meteo, no API key required) ───────────────────────
@@ -4439,6 +5038,8 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     if (!panel) return;
     const wasHidden = panel.hidden;
     document.querySelectorAll('.map-panel').forEach(p => { p.hidden = true; });
+    document.getElementById('map-toolbar').hidden = true;
+    document.getElementById('btn-map-menu').classList.remove('active');
     if (wasHidden) panel.hidden = false;
   }
 
@@ -4791,8 +5392,60 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     // Reverse route button (flip track direction, overwrite)
     document.getElementById('btn-reverse-route').addEventListener('click', openReverseConfirm);
 
-    // Initialise privacy zone circles on the map
+    // Logbook modal
+    document.getElementById('btn-logbook-route').addEventListener('click', openLogbookModal);
+    document.getElementById('logbook-modal-close').addEventListener('click', closeLogbookModal);
+    document.getElementById('logbook-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeLogbookModal();
+    });
+    document.getElementById('logbook-add-btn').addEventListener('click', handleLogbookSave);
+
+    // Places panel + modal
+    document.getElementById('btn-places').addEventListener('click', () => {
+      togglePanel('places-panel');
+      if (!document.getElementById('places-panel').hidden) renderPlacesCategoryFilter();
+    });
+    document.getElementById('places-visible-toggle').addEventListener('change', e => {
+      setPlacesVisible(e.target.checked);
+    });
+    document.getElementById('btn-place-add').addEventListener('click', () => {
+      document.getElementById('places-panel').hidden = true;
+      enterPlaceAddMode();
+    });
+    document.getElementById('btn-places-manage').addEventListener('click', () => {
+      document.getElementById('places-panel').hidden = true;
+      openPlacesModal();
+    });
+    document.getElementById('places-modal-close').addEventListener('click', closePlacesModal);
+    document.getElementById('places-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closePlacesModal();
+    });
+    document.getElementById('places-search-btn').addEventListener('click', handlePlacesAddressSearch);
+    document.getElementById('places-address-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') handlePlacesAddressSearch();
+    });
+    document.getElementById('places-detect-btn').addEventListener('click', handlePlacesDetectLocation);
+    document.getElementById('places-pick-btn').addEventListener('click', () => {
+      document.getElementById('places-modal').style.display = 'none';
+      enterPlaceAddMode();
+    });
+    document.getElementById('place-save-btn').addEventListener('click', handlePlaceComposerSave);
+    document.getElementById('place-cat-add-btn').addEventListener('click', () => {
+      const emoji = document.getElementById('place-cat-emoji-input').value.trim() || '🏷️';
+      const name  = document.getElementById('place-cat-name-input').value.trim();
+      if (!name) return;
+      addPlaceCategory(name, emoji);
+      document.getElementById('place-cat-emoji-input').value = '';
+      document.getElementById('place-cat-name-input').value  = '';
+      renderPlaceCategoriesManager();
+      renderPlaceCategorySelect();
+      renderPlacesCategoryFilter();
+    });
+    document.getElementById('place-add-cancel').addEventListener('click', exitPlaceAddMode);
+
+    // Initialise privacy zone circles + places on the map
     MapManager.updatePrivacyZones(getPrivacyZones());
+    refreshPlacesOnMap();
 
     // Shared-route expiration banner
     document.getElementById('banner-save-btn').addEventListener('click', async () => {
@@ -4803,7 +5456,24 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     });
     document.getElementById('banner-dismiss-btn').addEventListener('click', hideSharedRouteBanner);
 
-    // Map toolbar
+    // Map toolbar — opens from the menu icon in the search bar, closes on
+    // outside click or when another map panel (layers/legend/places) opens.
+    const mapToolbar = document.getElementById('map-toolbar');
+    const mapMenuBtn = document.getElementById('btn-map-menu');
+    mapMenuBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasHidden = mapToolbar.hidden;
+      document.querySelectorAll('.map-panel').forEach(p => { p.hidden = true; });
+      mapToolbar.hidden = !wasHidden;
+      mapMenuBtn.classList.toggle('active', !mapToolbar.hidden);
+    });
+    document.addEventListener('click', e => {
+      if (!mapToolbar.hidden && !mapToolbar.contains(e.target) && !mapMenuBtn.contains(e.target)) {
+        mapToolbar.hidden = true;
+        mapMenuBtn.classList.remove('active');
+      }
+    });
+
     document.getElementById('btn-zoom-in') .addEventListener('click', () => MapManager.zoomIn());
     document.getElementById('btn-zoom-out').addEventListener('click', () => MapManager.zoomOut());
 
@@ -4830,6 +5500,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     queryBtn.addEventListener('click', () => {
       const active = queryBtn.classList.toggle('active');
       if (active && trackCreatorActive) exitTrackCreatorMode();
+      if (active && placeAddModeActive) exitPlaceAddMode();
       MapManager.setQueryMode(active);
     });
 

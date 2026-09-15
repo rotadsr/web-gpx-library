@@ -7,7 +7,7 @@ const MapManager = (() => {
 
   // ── State ───────────────────────────────────────────────────────────────────
   let map             = null;
-  let currentLayerKey = 'carto-light';
+  let currentLayerKey = 'esri-light-gray';
   let currentTile     = null;
   let trackLine       = null;
   let startMarker     = null;
@@ -33,6 +33,11 @@ const MapManager = (() => {
   const HEAT_THRESHOLD       = 9;   // zoom ≤ this → show heatmap instead of polylines
   let privacyZoneLayers      = [];
   let _storedPrivacyZones    = [];
+  let placeMarkers           = [];
+  let _storedPlaces          = [];
+  let _placeCategoryFilter   = null; // null = show all categories
+  let placeAddMode           = false;
+  let placeAddClickCb        = null;
 
   // ── Tile layer catalogue ────────────────────────────────────────────────────
   // All sources: free, open, no API key required.
@@ -107,36 +112,38 @@ const MapManager = (() => {
       },
     },
     {
-      id: 'carto-light',
+      id: 'esri-light-gray',
       label: 'Light',
-      source: 'CartoDB Positron',
-      url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+      source: 'Esri Light Gray Canvas',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      refUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
       opts: {
-        subdomains: 'abcd',
-        maxZoom: 20,
+        maxZoom: 16,
         attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors '
-          + '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+          'Tiles &copy; Esri — Esri, HERE, Garmin, FAO, NOAA, USGS, '
+          + '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS User Community',
       },
+      refOpts: { maxZoom: 16 },
     },
     {
-      id: 'carto-dark',
+      id: 'esri-dark-gray',
       label: 'Dark',
-      source: 'CartoDB Dark Matter',
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      source: 'Esri Dark Gray Canvas',
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+      refUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
       opts: {
-        subdomains: 'abcd',
-        maxZoom: 20,
+        maxZoom: 16,
         attribution:
-          '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors '
-          + '&copy; <a href="https://carto.com/attributions">CARTO</a>',
+          'Tiles &copy; Esri — Esri, HERE, Garmin, '
+          + '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS User Community',
       },
+      refOpts: { maxZoom: 16 },
     },
     {
       id: 'openslopemap',
       label: 'Slope Angle (Alps)',
       source: 'OpenSlopeMap',
-      baseUnder: 'carto-light', // regional overlay only — needs a basemap beneath outside its coverage area
+      baseUnder: 'esri-light-gray', // regional overlay only — needs a basemap beneath outside its coverage area
       url: 'https://tileserver{s}.openslopemap.org/OSloMap_HR_AlpsEast_16/{z}/{x}/{y}.png',
       opts: {
         subdomains: '1234',
@@ -153,7 +160,7 @@ const MapManager = (() => {
       label: 'Slope Angle (Pyrenees)',
       source: 'ATES Maps',
       type: 'wms',
-      baseUnder: 'carto-light', // regional overlay only — needs a basemap beneath outside its coverage area
+      baseUnder: 'esri-light-gray', // regional overlay only — needs a basemap beneath outside its coverage area
       url: 'https://geoserver.atesmaps.org/wms',
       opts: {
         layers: 'mdp:mdp_all_ok',
@@ -170,18 +177,27 @@ const MapManager = (() => {
 
   // ── Initialisation (lazy — called on first showRoute) ───────────────────────
 
-  function createTileLayer(layer) {
+  // Builds the raw Leaflet tile layer(s) for a LAYERS entry, including its
+  // optional label/reference overlay (e.g. Esri Canvas base + Reference tiles).
+  function _tilesFor(layer) {
     const tile = layer.type === 'wms'
       ? L.tileLayer.wms(layer.url, layer.opts)
       : L.tileLayer(layer.url, layer.opts);
+    const tiles = [tile];
+    if (layer.refUrl) tiles.push(L.tileLayer(layer.refUrl, layer.refOpts));
+    return tiles;
+  }
 
-    if (!layer.baseUnder) return tile;
+  function createTileLayer(layer) {
+    const tiles = _tilesFor(layer);
+
+    if (!layer.baseUnder) return tiles.length === 1 ? tiles[0] : L.layerGroup(tiles);
 
     // Regional overlays (e.g. slope-angle maps) only cover a small area and
     // render transparent outside it — pair with a basemap so the rest of the
     // map isn't left blank.
     const base = LAYERS.find(l => l.id === layer.baseUnder);
-    return L.layerGroup([L.tileLayer(base.url, base.opts), tile]);
+    return L.layerGroup([..._tilesFor(base), ...tiles]);
   }
 
   function ensureMap() {
@@ -200,13 +216,15 @@ const MapManager = (() => {
     const layer = LAYERS.find(l => l.id === currentLayerKey);
     currentTile = createTileLayer(layer).addTo(map);
 
-    // Query-mode / track-creator click handler
+    // Query-mode / track-creator / place-add click handler
     map.on('click', e => {
       if (queryMode) handleQueryClick(e.latlng);
       if (trackCreatorMode && trackCreatorClickCb) trackCreatorClickCb(e.latlng);
+      if (placeAddMode && placeAddClickCb) placeAddClickCb(e.latlng);
     });
 
     if (_storedPrivacyZones.length) _renderPrivacyZones();
+    if (_storedPlaces.length) _renderPlaces();
   }
 
   // ── Privacy zone circles ────────────────────────────────────────────────────
@@ -235,6 +253,52 @@ const MapManager = (() => {
       if (label) circle.bindTooltip(label, { sticky: true, className: 'privacy-zone-tip' });
       privacyZoneLayers.push(circle);
     }
+  }
+
+  // ── Places (global points of interest) ──────────────────────────────────────
+
+  function setPlaceAddMode(enabled, onClick) {
+    placeAddMode = enabled;
+    placeAddClickCb = enabled ? onClick : null;
+    if (!map) return;
+    map.getContainer().style.cursor = enabled ? 'crosshair' : '';
+  }
+
+  function updatePlaces(places, categoryFilter) {
+    _storedPlaces = places || [];
+    _placeCategoryFilter = categoryFilter || null;
+    if (!map) return;
+    _renderPlaces();
+  }
+
+  function _renderPlaces() {
+    placeMarkers.forEach(m => { try { map.removeLayer(m); } catch (_) {} });
+    placeMarkers = [];
+    const visible = _placeCategoryFilter
+      ? _storedPlaces.filter(p => p.category === _placeCategoryFilter)
+      : _storedPlaces;
+    for (const place of visible) {
+      const emoji = typeof getPlaceCategoryEmoji === 'function' ? getPlaceCategoryEmoji(place.category) : '📍';
+      const marker = L.marker([place.lat, place.lon], {
+        icon: L.divIcon({
+          className: 'place-marker-icon',
+          html: `<span class="place-marker-emoji">${emoji}</span>`,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13],
+        }),
+        zIndexOffset: 300,
+      }).addTo(map);
+      const esc   = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+      const title = esc(place.name || 'Unnamed place');
+      const notes = place.notes ? `<p>${esc(place.notes)}</p>` : '';
+      marker.bindPopup(`<div class="place-popup"><strong>${title}</strong>${notes}</div>`);
+      placeMarkers.push(marker);
+    }
+  }
+
+  function hidePlaces() {
+    placeMarkers.forEach(m => { try { map.removeLayer(m); } catch (_) {} });
+    placeMarkers = [];
   }
 
   // ── Route rendering ─────────────────────────────────────────────────────────
@@ -823,5 +887,6 @@ const MapManager = (() => {
     showOverview, clearOverview, selectOverviewRoute,
     showSkiForViewport, clearSkiResort,
     updatePrivacyZones,
+    setPlaceAddMode, updatePlaces, hidePlaces,
   };
 })();

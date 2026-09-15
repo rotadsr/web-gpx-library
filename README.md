@@ -8,7 +8,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 ## Features
 
 ### 📍 Route Visualization
-- Interactive map with multiple tile layers — Street Map, Topographic (OpenTopoMap), Satellite & Esri Topo, Cycling (CyclOSM), Humanitarian, and CartoDB Light (default) / Dark
+- Interactive map with multiple tile layers — Street Map, Topographic (OpenTopoMap), Satellite & Esri Topo, Cycling (CyclOSM), Humanitarian, and Esri Light Gray Canvas (default) / Dark Gray Canvas
 - **Slope angle overlays** — colour-coded avalanche-risk slope shading for backcountry planning, covering the Alps (OpenSlopeMap) and the Pyrenees (ATES Maps WMS); layered automatically over a basemap outside their coverage area
 - Route track display with start (🟢) and end (🔴) point markers
 - Real-time elevation cursor on the map
@@ -17,6 +17,23 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Reverse route direction** — flip a track end-to-end with one click; a "⇄ Reversed" badge appears in the route header, and the flip persists to the library (click again to restore the original direction)
 - **Map is always visible** — the map renders immediately even with an empty library, so you can pan/zoom/search right away
 - **Map search** — type a place name (city, region, or country — e.g. "La Seu d'Urgell" or "Catalonia") in the search box on the map to fly straight there, powered by Nominatim
+- **Collapsible map menu** — zoom, locate, layers, legend, query mode, ski overlay, Places, and 3D view all live behind a single menu icon (☰) next to the map search box, keeping the map clear until you need a tool
+
+### 📌 Places
+- **Save your own points of interest** anywhere on the map — fountains, mountain refuges, viewpoints, parking, pumptracks, campsites, climbing/bouldering spots, or anything else — independent of any specific route, always visible while you browse
+- **Built-in categories**: 💧 Water/Fountain, 🏠 Mountain Refuge/Shelter, 🔭 Viewpoint, 🅿️ Parking, 🚴 Pumptrack, ⛺ Camping, 🧗 Climbing/Bouldering, 📍 Other
+- **Custom categories** — define your own label and emoji for anything not covered by the built-ins; they behave identically to built-in categories for filtering and display
+- **Three ways to add a place**: click directly on the map, search an address, or use your current location
+- **Category filter** — show only one category at a time from the Places panel, with a live count per category
+- **Manage places** — a dedicated modal lists every saved place with inline edit and delete
+- Places are stored in the browser (localStorage) and included in Export Library / GitHub auto-backup alongside your routes
+
+### 📓 Logbook
+- **Keep a journal per route** — log every time you did the route, with a date and free-text notes (e.g. "Better for summer, start 10AM–12PM to avoid the heat")
+- Multiple entries per route, sorted newest first, each editable or removable
+- Opens from the notebook icon in the route header; a small badge shows how many entries a route has
+- Only available for routes saved to **My Library** — session uploads must be saved first, since logbook entries live with the route record
+- Logbook entries are persisted in IndexedDB with the route itself, so they round-trip through Export Library, Import, and GitHub auto-backup automatically
 
 ### 🧭 Track Creator
 - **Build a route by clicking the map** — open **"···"** → **Create Track…** in the library header, then click points on the map to build a route from scratch
@@ -37,6 +54,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
+- **Gradient chart with section inspector** — switch to the Gradient tab to see the route colour-coded by climb/descent/flat sections (consecutive same-direction steps are merged into one averaged section, so a single climb reads as one clean band instead of dozens of noisy micro-gradients); click any section — uphill, downhill, or flat — to see its **Section** range, **Distance**, **Avg Gradient**, and **Elev. Range**
 - **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed — duration and average speed are editable; editing one updates the other automatically
 - **Difficulty rating** — smart algorithm based on distance, elevation, and gradient
 - **7-day weather forecast** — powered by Open-Meteo API (no key required)
@@ -45,9 +63,9 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **My Library** — save routes permanently to the browser (IndexedDB)
 - **Session uploads** — temporary routes for quick preview
 - **Inline metadata editing** — click the pencil icon next to a route name, description, or author to edit in place; changes are saved immediately to the library and synced into the GPX file
-- **Export Library/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository
+- **Export Library/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository. The export bundles routes, Places, custom Place categories, and per-route Logbook entries in a single file
 - **Bulk export GPX** — select any number of routes from the library and download each as an individual GPX file in one go
-- **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes)
+- **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes); the backup includes Places and Logbook data alongside routes
 
 ### 🔍 Search & Filter
 - Full-text search across route names, descriptions, and tags
@@ -162,6 +180,21 @@ Two options are available under **"···"** → **Import** in the library heade
 5. To **edit** a zone, click the pencil (✎) icon next to it — the map picker opens with the existing location and radius; drag the marker, search a new address, or adjust the radius; click **Save changes**
 6. To **remove** a zone, click the ✕ button next to it
 
+### Use Places
+1. Click the **menu icon** (☰) next to the map search box, then click the **📍 Places** button to open the Places panel
+2. Click **＋ Add place**, then either click a spot on the map, search an address, or use your current location
+3. Pick a **category** (built-in or custom), give it a **name**, and optionally add **notes**, then click **Save place**
+4. Use the **category filter** in the Places panel to show only one category at a time — click it again to show all
+5. Click **Manage places…** to see every saved place in one list, edit any of them (✎), or remove them (✕)
+6. To add your own category, open **Manage places…**, type an emoji and a name under **Custom categories**, then click **Add category**
+
+### Keep a Logbook
+1. Load a route that's already in **My Library** (session uploads must be saved first — see [Save to Library](#save-to-library))
+2. Click the **notebook icon** in the route header to open the Logbook
+3. Pick a **date**, write your **notes** (e.g. "Better for summer, start 10AM–12PM to avoid the heat"), then click **Add entry**
+4. Entries are listed newest first; click the pencil (✎) to edit one, or the trash icon to delete it
+5. A small badge on the notebook icon shows how many entries a route has at a glance
+
 ### Share a Route
 - Load any route from the sidebar
 - Click the **Share** button (↗ icon) in the route header
@@ -231,7 +264,7 @@ Two options are available under **"···"** → **Import** in the library heade
 ## Tech Stack
 
 - **Frontend**: Vanilla JavaScript (no frameworks)
-- **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers — OpenStreetMap, OpenTopoMap, Esri, CyclOSM, [CartoDB](https://carto.com/basemaps) Light/Dark, [OpenSlopeMap](https://openslopemap.org/) and [ATES Maps](https://atesmaps.org/) for slope-angle overlays
+- **Maps**: [Leaflet.js](https://leafletjs.com/) with free tile providers — OpenStreetMap, OpenTopoMap, [Esri](https://www.arcgis.com/) (Satellite, Topo, Light/Dark Gray Canvas), CyclOSM, [OpenSlopeMap](https://openslopemap.org/) and [ATES Maps](https://atesmaps.org/) for slope-angle overlays
 - **Heatmap**: [Leaflet.heat](https://github.com/Leaflet/Leaflet.heat) for overview density view
 - **3D terrain**: [MapLibre GL JS](https://maplibre.org/) with AWS Terrarium DEM tiles (free, no key)
 - **Charts**: [Chart.js](https://www.chartjs.org/)
@@ -258,7 +291,8 @@ web-gpx-library/
 │   ├── mapManager.js       # Leaflet integration
 │   ├── trackCreator.js     # Track Creator: BRouter snap-to-path + draw mode
 │   ├── view3d.js           # MapLibre GL 3D terrain view
-│   └── activities.js       # Activity catalogue
+│   ├── activities.js       # Activity catalogue
+│   └── places.js           # Places category catalogue (built-in + custom)
 └── README.md               # This file
 ```
 
@@ -290,6 +324,8 @@ Then open `http://localhost:8000` in your browser.
 - IndexedDB is local to your device and browser.
 - Route difficulty and geocoded locations are cached in localStorage for fast filtering.
 - Ski resort piste data is cached in localStorage (24-hour TTL) and never leaves your browser.
+- Places and custom Place categories are stored in localStorage and never leave your browser except when you explicitly Export Library or push a GitHub auto-backup.
+- Logbook entries live inside their route's record in IndexedDB — same storage and same privacy guarantees as the rest of the route.
 - Your GitHub PAT is stored only in your browser's localStorage and is sent exclusively to `api.github.com`.
 - The Track Creator sends the points you click to the public `brouter.de` routing server to compute snap-to-path routes; points placed in Draw mode never leave your browser since no routing call is made for them.
 - Export your library regularly for backup, or enable the GitHub auto-backup feature.
@@ -350,6 +386,7 @@ Resort data is cached in localStorage for 24 hours so subsequent page loads are 
 - Visual representation of elevation vs. distance
 - Hover to see exact elevation and gradient at any point
 - Gradient per segment shown as an arrow: ↑ uphill, → flat, ↓ downhill
+- In Gradient mode, consecutive same-direction steps merge into a single section coloured by its average gradient — click any section (uphill, downhill, or flat) for its Section range, Distance, Avg Gradient, and Elev. Range
 
 ### Unit Toggle
 Switch between **metric** (km, m, km/h) and **imperial** (mi, ft, mph) on the fly.

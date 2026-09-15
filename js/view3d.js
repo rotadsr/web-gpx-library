@@ -2,8 +2,8 @@
  * View3D — MapLibre GL JS 3D terrain route visualisation.
  *
  * Overlays a MapLibre GL map (pitch 55°) directly on top of the Leaflet map.
- * AWS Terrarium DEM tiles provide real terrain extrusion; CARTO Voyager tiles
- * provide the base map texture. The route is drawn as per-segment GeoJSON lines
+ * AWS Terrarium DEM tiles provide real terrain extrusion; Esri Light Gray Canvas
+ * tiles provide the base map texture. The route is drawn as per-segment GeoJSON lines
  * colour-coded from blue (low elevation) to red (high elevation).
  *
  * Toggle: click the 3D button → activates; click again → returns to 2D.
@@ -98,13 +98,19 @@ const View3D = (() => {
           'base': {
             type: 'raster',
             tiles: [
-              'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-              'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-              'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-              'https://d.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
             ],
             tileSize: 256,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            maxzoom: 16,
+            attribution: 'Tiles &copy; Esri — Esri, HERE, Garmin, FAO, NOAA, USGS, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and the GIS User Community',
+          },
+          'base-ref': {
+            type: 'raster',
+            tiles: [
+              'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+            ],
+            tileSize: 256,
+            maxzoom: 16,
           },
           'dem': {
             type: 'raster-dem',
@@ -125,6 +131,7 @@ const View3D = (() => {
         },
         layers: [
           { id: 'base-layer', type: 'raster', source: 'base' },
+          { id: 'base-ref-layer', type: 'raster', source: 'base-ref' },
           {
             id: 'route-shadow',
             type: 'line',
