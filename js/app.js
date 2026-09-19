@@ -19,7 +19,7 @@
   let activeRouteId   = null;
   let currentGpxText  = null;
   let sharedRouteRef  = null;  // route object loaded from a ?gist= share URL
-  let sortMode        = 'alpha-asc'; // 'default'|'alpha-asc'|'alpha-desc'|'newest'|'oldest'|'activity'|'diff-asc'|'diff-desc'
+  let sortMode        = 'alpha-asc'; // 'default'|'alpha-asc'|'alpha-desc'|'newest'|'oldest'|'activity'|'diff-asc'|'diff-desc'|'dist-asc'|'dist-desc'|'elev-asc'|'elev-desc'|'grad-asc'|'grad-desc'|'dur-asc'|'dur-desc'|'speed-asc'|'speed-desc'
   let overviewMode    = false;
   let bulkExportMode      = false;
   let bulkExportSelection = new Set(); // route ids selected for bulk GPX export
@@ -31,6 +31,7 @@
   // Activity / category filter
   let activeCategory  = null;  // null = all, or a CATEGORIES key like 'cycling'
   let activeDifficulty = null; // null = all, or 'easy'|'moderate'|'hard'|'expert'
+  let activeLogbookStatus = null; // null = all, or 'done'|'planned'|'want'
 
   // Stats state — stats are always stored in metric internally
   let currentStats     = null;
@@ -38,6 +39,21 @@
   let currentActivity  = null;   // resolved activity key for the active route
   let overrideDuration = null;   // user-set seconds; null = use GPX value
   let units            = 'metric'; // 'metric' | 'imperial'
+
+  // Calendar modal state
+  let calendarViewYear  = null; // set to today's on open
+  let calendarViewMonth = null; // 0-11, set to today's on open
+
+  // Stats dashboard state
+  let statsActivityChart = null;
+  let statsMonthlyChart  = null;
+  let statsProgressChart = null; // per-route duration/speed progress chart
+  let statsViewYear      = null; // year currently viewed (Year and Month period modes)
+  let statsViewMonth     = null; // 0-11, month currently viewed (Month period mode)
+  let statsProgressMetric = 'duration'; // 'duration' | 'speed', per-route progress chart toggle
+
+  // Overdue Planned check-in queue: [{ routeId, entryId }], drained one at a time
+  let plannedCheckinQueue = [];
 
   // User-defined empty folders (names of folders with no routes yet)
   let customFolders = JSON.parse(localStorage.getItem('gpx-library-folders') || '[]');
@@ -108,6 +124,8 @@
 
   const KM_TO_MI  = 0.621371;
   const M_TO_FT   = 3.28084;
+  const MI_TO_KM  = 1.609344;
+  const FT_TO_M   = 0.3048;
 
   function fmtDist(km) {
     return units === 'imperial'
@@ -215,6 +233,7 @@
       const btn = document.getElementById('btn-overview');
       if (btn) { btn.classList.add('is-active'); btn.title = 'Exit map overview'; }
       await enterOverview();
+      queueOverduePlannedCheckins();
     }
 
     let searchDebounceTimer = null;
@@ -236,6 +255,16 @@
     'activity':   'Activity',
     'diff-asc':   'Easy first',
     'diff-desc':  'Hard first',
+    'dist-asc':   'Shortest',
+    'dist-desc':  'Longest',
+    'elev-asc':   'Lowest gain',
+    'elev-desc':  'Highest gain',
+    'grad-asc':   'Flattest',
+    'grad-desc':  'Steepest',
+    'dur-asc':    'Quickest',
+    'dur-desc':   'Slowest',
+    'speed-asc':  'Slowest speed',
+    'speed-desc': 'Fastest speed',
   };
 
   function updateSortBtn() {
@@ -280,26 +309,52 @@
 
   function showSortDropdown(anchor) {
     openDropdown('sort-dropdown', menu => {
-      [
-        { key: 'alpha-asc',  label: 'A → Z' },
-        { key: 'alpha-desc', label: 'Z → A' },
-        { key: 'newest',     label: 'Newest first' },
-        { key: 'oldest',     label: 'Oldest first' },
-        { key: 'activity',   label: 'By activity' },
-        { key: 'diff-asc',   label: '🟢 Easy first' },
-        { key: 'diff-desc',  label: '⚫ Hard first' },
-      ].forEach(({ key, label }) => {
-        const item = document.createElement('div');
-        item.className = 'lib-dropdown-item' + (sortMode === key ? ' is-active' : '');
-        item.innerHTML =
-          `<span class="lib-dropdown-check">${sortMode === key ? '✓' : ''}</span>${label}`;
-        item.addEventListener('click', () => {
-          sortMode = key;
-          menu.remove();
-          updateSortBtn();
-          renderFileTree();
+      const groups = [
+        [
+          { key: 'alpha-asc',  label: 'A → Z' },
+          { key: 'alpha-desc', label: 'Z → A' },
+          { key: 'newest',     label: 'Newest first' },
+          { key: 'oldest',     label: 'Oldest first' },
+          { key: 'activity',   label: 'By activity' },
+          { key: 'diff-asc',   label: '🟢 Easy first' },
+          { key: 'diff-desc',  label: '⚫ Hard first' },
+        ],
+        [
+          { key: 'dist-asc',  label: 'Distance: shortest first' },
+          { key: 'dist-desc', label: 'Distance: longest first' },
+          { key: 'elev-asc',  label: 'Elevation gain: lowest first' },
+          { key: 'elev-desc', label: 'Elevation gain: highest first' },
+          { key: 'grad-asc',  label: 'Gradient: flattest first' },
+          { key: 'grad-desc', label: 'Gradient: steepest first' },
+          { key: 'dur-asc',   label: 'Duration: shortest first' },
+          { key: 'dur-desc',  label: 'Duration: longest first' },
+          { key: 'speed-asc',  label: 'Speed: slowest first' },
+          { key: 'speed-desc', label: 'Speed: fastest first' },
+        ],
+      ];
+
+      groups.forEach((group, i) => {
+        if (i > 0) {
+          const divider = document.createElement('div');
+          divider.className = 'lib-dropdown-divider';
+          menu.appendChild(divider);
+        }
+        group.forEach(({ key, label }) => {
+          const item = document.createElement('div');
+          item.className = 'lib-dropdown-item' + (sortMode === key ? ' is-active' : '');
+          const check = document.createElement('span');
+          check.className = 'lib-dropdown-check';
+          check.textContent = sortMode === key ? '✓' : '';
+          item.appendChild(check);
+          item.appendChild(document.createTextNode(label));
+          item.addEventListener('click', () => {
+            sortMode = key;
+            menu.remove();
+            updateSortBtn();
+            renderFileTree();
+          });
+          menu.appendChild(item);
         });
-        menu.appendChild(item);
       });
     }, anchor);
   }
@@ -1083,6 +1138,7 @@
     });
 
     buildDifficultyPills();
+    buildLogbookStatusPills();
   }
 
   const DIFFICULTY_META = [
@@ -1110,6 +1166,42 @@
       btn.addEventListener('click', () => {
         activeDifficulty = activeDifficulty === key ? null : key;
         buildDifficultyPills();
+        renderFileTree();
+      });
+      container.appendChild(btn);
+    });
+  }
+
+  const LOGBOOK_STATUS_META = [
+    { key: 'done',    label: 'Done' },
+    { key: 'planned', label: 'Planned' },
+    { key: 'want',    label: 'Want to do' },
+  ];
+
+  // True if any of the route's logbook entries carry the given label.
+  function routeHasLogbookStatus(route, status) {
+    return getRouteLogbook(route).some(e => getLogbookEntryLabel(e) === status);
+  }
+
+  function buildLogbookStatusPills() {
+    const section   = document.getElementById('logbook-status-filter-section');
+    const container = document.getElementById('logbook-status-pills');
+    if (!container) return;
+
+    const allRoutes = [...savedRoutes, ...uploadedRoutes];
+    const hasAnyEntries = allRoutes.some(r => getRouteLogbook(r).length > 0);
+    if (!hasAnyEntries) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    container.innerHTML = '';
+    LOGBOOK_STATUS_META.forEach(({ key, label }) => {
+      const btn = document.createElement('button');
+      btn.className = 'logbook-status-pill logbook-status-pill--' + key + (activeLogbookStatus === key ? ' active' : '');
+      btn.dataset.status = key;
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        activeLogbookStatus = activeLogbookStatus === key ? null : key;
+        buildLogbookStatusPills();
         renderFileTree();
       });
       container.appendChild(btn);
@@ -1152,8 +1244,34 @@
           return (a.name || '').localeCompare(b.name || '');
         });
       }
+      case 'dist-asc':  return sortByMetric(s, 'distance', 1);
+      case 'dist-desc': return sortByMetric(s, 'distance', -1);
+      case 'elev-asc':  return sortByMetric(s, 'elevationGain', 1);
+      case 'elev-desc': return sortByMetric(s, 'elevationGain', -1);
+      case 'grad-asc':  return sortByMetric(s, 'gradient', 1);
+      case 'grad-desc': return sortByMetric(s, 'gradient', -1);
+      case 'dur-asc':   return sortByMetric(s, 'durationSec', 1);
+      case 'dur-desc':  return sortByMetric(s, 'durationSec', -1);
+      case 'speed-asc':  return sortByMetric(s, 'speed', 1);
+      case 'speed-desc': return sortByMetric(s, 'speed', -1);
       default: return s;
     }
+  }
+
+  // Sorts by a getRouteSearchStats() field; routes lacking that data (e.g. no
+  // GPX timestamps for duration/speed) sink to the bottom regardless of direction.
+  function sortByMetric(routes, field, dir) {
+    return routes.sort((a, b) => {
+      const va = getRouteSearchStats(a)?.[field];
+      const vb = getRouteSearchStats(b)?.[field];
+      const missingA = va === null || va === undefined || isNaN(va);
+      const missingB = vb === null || vb === undefined || isNaN(vb);
+      if (missingA && missingB) return (a.name || '').localeCompare(b.name || '');
+      if (missingA) return 1;
+      if (missingB) return -1;
+      if (va !== vb) return (va - vb) * dir;
+      return (a.name || '').localeCompare(b.name || '');
+    });
   }
 
   function saveDifficultyCache() {
@@ -1205,6 +1323,8 @@
   function renderFileTree() {
     const tree = document.getElementById('file-tree');
     tree.innerHTML = '';
+
+    renderSearchFilterChips(parseNumericFilters(searchQuery).filters);
 
     const filteredSaved   = sortRoutes(filterRoutes(savedRoutes));
     const filteredUploads = sortRoutes(filterBySearch(uploadedRoutes));
@@ -1618,55 +1738,222 @@
     return pts.map(p => String.fromCharCode(p - BASE + 65)).join('');
   }
 
+  // ── Numeric range search (distance, elevation gain, gradient, duration, speed) ─
+  // Tokens: >20km  <50km  >20km<50km  >1200m  >3%<6%  <1h  >10km/h
+  // Longest unit strings must precede their prefixes so the regex picks the right one.
+  const NUMERIC_FILTER_RE = /([<>])\s*(\d+(?:\.\d+)?)\s*(km\/h|kmh|mph|km|mi|ft|hrs|hr|h|m|%)/g;
+
+  const NUMERIC_FILTER_METRIC = {
+    km: 'distance', mi: 'distance',
+    m: 'elevation', ft: 'elevation',
+    '%': 'gradient',
+    h: 'duration', hr: 'duration', hrs: 'duration',
+    'km/h': 'speed', kmh: 'speed', mph: 'speed',
+  };
+
+  // Converts a typed value+unit into the metric's internal base unit
+  // (distance→km, elevation→m, gradient→%, duration→seconds, speed→km/h)
+  function convertNumericFilterValue(unit, value) {
+    switch (unit) {
+      case 'mi':  return value * MI_TO_KM;
+      case 'ft':  return value * FT_TO_M;
+      case 'mph': return value * MI_TO_KM;
+      case 'h': case 'hr': case 'hrs': return value * 3600;
+      default: return value; // km, m, %, km/h, kmh
+    }
+  }
+
+  // Extracts numeric range filters from the search query and returns the
+  // leftover text (for the existing name/tag/location/keyword matching).
+  // Each filter also carries the raw matched substrings ("tokens") that
+  // produced it, so a filter chip can strip exactly those out of the query.
+  function parseNumericFilters(query) {
+    const filters = {};
+    for (const match of query.matchAll(NUMERIC_FILTER_RE)) {
+      const [raw, dir, numStr, unit] = match;
+      const metric = NUMERIC_FILTER_METRIC[unit];
+      if (!metric) continue;
+      const value = convertNumericFilterValue(unit, parseFloat(numStr));
+      const f = filters[metric] || (filters[metric] = { tokens: [] });
+      f.tokens.push(raw);
+      if (dir === '>') f.min = f.min !== undefined ? Math.max(f.min, value) : value;
+      else              f.max = f.max !== undefined ? Math.min(f.max, value) : value;
+    }
+    const remainder = query.replace(NUMERIC_FILTER_RE, ' ').replace(/\s+/g, ' ').trim();
+    return { filters, remainder };
+  }
+
+  // Removes this filter's own tokens from the current search query and re-renders.
+  function removeNumericFilter(metric) {
+    const { filters } = parseNumericFilters(searchQuery);
+    const tokens = filters[metric]?.tokens || [];
+    tokens.forEach(tok => { searchQuery = searchQuery.replace(tok, ' '); });
+    searchQuery = searchQuery.replace(/\s+/g, ' ').trim();
+    document.getElementById('search-input').value = searchQuery;
+    renderFileTree();
+  }
+
+  function rangeLabel(f, factor, unit, decimals) {
+    const fmt = v => (v * factor).toFixed(decimals);
+    if (f.min !== undefined && f.max !== undefined) return `${fmt(f.min)}–${fmt(f.max)} ${unit}`;
+    if (f.min !== undefined) return `> ${fmt(f.min)} ${unit}`;
+    return `< ${fmt(f.max)} ${unit}`;
+  }
+
+  const NUMERIC_FILTER_LABEL = {
+    distance:  (f, isImperial) => rangeLabel(f, isImperial ? KM_TO_MI : 1, isImperial ? 'mi' : 'km', isImperial ? 2 : 1),
+    elevation: (f, isImperial) => rangeLabel(f, isImperial ? M_TO_FT  : 1, isImperial ? 'ft' : 'm', 0),
+    gradient:  f => rangeLabel(f, 1, '%', 1),
+    duration:  f => rangeLabel(f, 1 / 3600, 'h', 1),
+    speed:     (f, isImperial) => rangeLabel(f, isImperial ? KM_TO_MI : 1, isImperial ? 'mph' : 'km/h', 1),
+  };
+
+  const NUMERIC_FILTER_CHIP_NAME = {
+    distance: 'Distance', elevation: 'Elevation gain', gradient: 'Gradient',
+    duration: 'Duration', speed: 'Speed',
+  };
+
+  // Renders removable chips for any active numeric range filters, below the search box.
+  function renderSearchFilterChips(filters) {
+    const container = document.getElementById('search-filter-chips');
+    if (!container) return;
+    container.textContent = '';
+    const isImperial = units === 'imperial';
+    Object.entries(filters).forEach(([metric, f]) => {
+      const chip = document.createElement('span');
+      chip.className = 'search-filter-chip';
+      chip.appendChild(document.createTextNode(
+        `${NUMERIC_FILTER_CHIP_NAME[metric]}: ${NUMERIC_FILTER_LABEL[metric](f, isImperial)}`
+      ));
+      const removeBtn = document.createElement('span');
+      removeBtn.className = 'search-filter-chip-remove';
+      removeBtn.title = 'Remove filter';
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => removeNumericFilter(metric));
+      chip.appendChild(removeBtn);
+      container.appendChild(chip);
+    });
+  }
+
+  const NUMERIC_FILTER_FIELD = {
+    distance: 'distance', elevation: 'elevationGain', gradient: 'gradient',
+    duration: 'durationSec', speed: 'speed',
+  };
+
+  // Derives the searchable metrics for a route from its parsed GPX stats,
+  // honouring a saved duration override the same way the stats panel does.
+  // Duration/speed are only reported when backed by real data (GPX timestamps
+  // or a user-set override) — routes with neither report null for both rather
+  // than silently matching against a guessed per-activity pace, since a typed
+  // <1h or >10km/h filter implies the user trusts the number to be real.
+  function getRouteSearchStats(route) {
+    if (!route._parsed) {
+      if (!route.gpxText) return null;
+      try { route._parsed = GPXParser.parse(route.gpxText); } catch (_) { return null; }
+    }
+    const stats = route._parsed.stats;
+    const hasRealTime = stats.totalTime != null || route.overrideDuration != null;
+    const secs  = hasRealTime ? (route.overrideDuration != null ? route.overrideDuration : stats.totalTime) : null;
+    const speed = hasRealTime && secs > 0 ? (stats.totalDistance / secs) * 3600 : null;
+
+    return {
+      distance:      stats.totalDistance,
+      elevationGain: stats.elevationGain,
+      gradient:      stats.avgUphillGradient,
+      durationSec:   secs,
+      speed,
+    };
+  }
+
+  function matchesNumericFilters(route, filters) {
+    const metrics = Object.keys(filters);
+    if (!metrics.length) return true;
+    const m = getRouteSearchStats(route);
+    if (!m) return false; // filter active but route has no data to check against
+    return metrics.every(metric => {
+      const val = m[NUMERIC_FILTER_FIELD[metric]];
+      if (val === null || val === undefined || isNaN(val)) return false;
+      const { min, max } = filters[metric];
+      if (min !== undefined && val <= min) return false;
+      if (max !== undefined && val >= max) return false;
+      return true;
+    });
+  }
+
+  // Strips accents/diacritics so "alas" matches "Alàs" and "pedreries" matches
+  // "Pedreríess" — lets users search without typing Spanish/Catalan tildes etc.
+  function normalizeSearchText(str) {
+    return String(str || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase();
+  }
+
+  // Maps a typed keyword to a logbook status key, so "done"/"planned"/"want to do"
+  // in the search bar filters routes that have a matching logbook entry.
+  const LOGBOOK_STATUS_KEYWORDS = { done: 'done', planned: 'planned', want: 'want', 'want to do': 'want' };
+
   function filterRoutes(routes) {
+    const { filters: numFilters, remainder } = parseNumericFilters(searchQuery);
+    const query = normalizeSearchText(remainder);
     // Expand the query to categories via semantic keywords (e.g. "winter" → snow)
-    const kwCats    = getKeywordCategories(searchQuery);
-    const flagCC    = flagToCountryCode(searchQuery); // e.g. "FR" if query is 🇫🇷
+    const kwCats    = getKeywordCategories(remainder);
+    const flagCC    = flagToCountryCode(remainder); // e.g. "FR" if query is 🇫🇷
+    const statusKw  = LOGBOOK_STATUS_KEYWORDS[query];
 
     return routes.filter(r => {
-      const activityName = getActivityName(r.activity).toLowerCase();
-      const catName      = getCategoryName(getActivityCategory(r.activity)).toLowerCase();
+      const activityName = normalizeSearchText(getActivityName(r.activity));
+      const catName      = normalizeSearchText(getCategoryName(getActivityCategory(r.activity)));
 
       // Keyword match: query maps to one or more categories that include this route's activity
       const matchKeyword = kwCats.length > 0
         && r.activity
         && kwCats.includes(getActivityCategory(r.activity));
 
-      const diffKw = ['easy', 'moderate', 'hard', 'expert'].find(d => d === searchQuery);
+      const diffKw = ['easy', 'moderate', 'hard', 'expert'].find(d => d === remainder);
 
-      const matchSearch = !searchQuery
-        || r.name.toLowerCase().includes(searchQuery)
-        || (r.description || '').toLowerCase().includes(searchQuery)
-        || (r.tags || []).some(t => t.toLowerCase().includes(searchQuery))
-        || activityName.includes(searchQuery)
-        || catName.includes(searchQuery)
+      const matchSearch = !query
+        || normalizeSearchText(r.name).includes(query)
+        || normalizeSearchText(r.description).includes(query)
+        || (r.tags || []).some(t => normalizeSearchText(t).includes(query))
+        || activityName.includes(query)
+        || catName.includes(query)
         || matchKeyword
-        || (locationCache[r.id] || '').includes(searchQuery)
+        || normalizeSearchText(locationCache[r.id]).includes(query)
         || (diffKw !== undefined && difficultyCache[r.id] === diffKw)
+        || (statusKw !== undefined && routeHasLogbookStatus(r, statusKw))
         || (flagCC !== null && (locationCache[r.id] || '').includes(flagCC.toLowerCase()));
 
       const matchCategory   = !activeCategory   || getActivityCategory(r.activity) === activeCategory;
       const matchDifficulty = !activeDifficulty || difficultyCache[r.id] === activeDifficulty;
+      const matchStatus     = !activeLogbookStatus || routeHasLogbookStatus(r, activeLogbookStatus);
+      const matchNumeric    = matchesNumericFilters(r, numFilters);
 
-      return matchSearch && matchCategory && matchDifficulty;
+      return matchSearch && matchCategory && matchDifficulty && matchStatus && matchNumeric;
     });
   }
 
   // Filter for uploads: text search + difficulty + same keyword expansion as library routes
   function filterBySearch(routes) {
-    const kwCats = getKeywordCategories(searchQuery);
-    const flagCC = flagToCountryCode(searchQuery);
+    const { filters: numFilters, remainder } = parseNumericFilters(searchQuery);
+    const query = normalizeSearchText(remainder);
+    const kwCats = getKeywordCategories(remainder);
+    const flagCC = flagToCountryCode(remainder);
+    const statusKw = LOGBOOK_STATUS_KEYWORDS[query];
     return routes.filter(r => {
       if (activeDifficulty && difficultyCache[r.id] !== activeDifficulty) return false;
-      if (!searchQuery) return true;
-      const diffKw       = ['easy', 'moderate', 'hard', 'expert'].find(d => d === searchQuery);
+      if (activeLogbookStatus && !routeHasLogbookStatus(r, activeLogbookStatus)) return false;
+      if (!matchesNumericFilters(r, numFilters)) return false;
+      if (!query) return true;
+      const diffKw       = ['easy', 'moderate', 'hard', 'expert'].find(d => d === remainder);
       const matchKeyword = kwCats.length > 0 && r.activity && kwCats.includes(getActivityCategory(r.activity));
-      return r.name.toLowerCase().includes(searchQuery)
-        || (r.description || '').toLowerCase().includes(searchQuery)
-        || getActivityName(r.activity).toLowerCase().includes(searchQuery)
+      return normalizeSearchText(r.name).includes(query)
+        || normalizeSearchText(r.description).includes(query)
+        || normalizeSearchText(getActivityName(r.activity)).includes(query)
         || matchKeyword
-        || (locationCache[r.id] || '').includes(searchQuery)
+        || normalizeSearchText(locationCache[r.id]).includes(query)
         || (diffKw !== undefined && difficultyCache[r.id] === diffKw)
+        || (statusKw !== undefined && routeHasLogbookStatus(r, statusKw))
         || (flagCC !== null && (locationCache[r.id] || '').includes(flagCC.toLowerCase()));
     });
   }
@@ -2748,6 +3035,17 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
   // ── Logbook (per-route journal entries) ─────────────────────────────────────
 
+  const LOGBOOK_LABELS = {
+    done:    { text: 'Done',       color: 'var(--green)' },
+    planned: { text: 'Planned',    color: 'var(--primary)' },
+    want:    { text: 'Want to do', color: 'var(--amber)' },
+  };
+
+  // Entries created before the label field existed have no `label` — treat them as Done.
+  function getLogbookEntryLabel(entry) {
+    return entry.label || 'done';
+  }
+
   function getRouteLogbook(route) {
     return (route && route.logbook) || [];
   }
@@ -2774,13 +3072,15 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     backupNeeded = true;
     scheduleBackup();
     updateLogbookBadge(route);
+    buildLogbookStatusPills();
+    if (activeLogbookStatus) renderFileTree();
   }
 
-  function addLogbookEntry(routeId, date, notes) {
+  function addLogbookEntry(routeId, date, notes, label, durationSec) {
     const route = savedRoutes.find(r => r.id === routeId) || uploadedRoutes.find(r => r.id === routeId);
     if (!route) return;
     const entries = getRouteLogbook(route).slice();
-    entries.push({ id: Date.now(), date, notes, createdAt: new Date().toISOString() });
+    entries.push({ id: Date.now(), date, notes, label, durationSec, createdAt: new Date().toISOString() });
     saveRouteLogbook(routeId, entries);
   }
 
@@ -2802,6 +3102,29 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     return savedRoutes.find(r => r.id === activeRouteId) || uploadedRoutes.find(r => r.id === activeRouteId);
   }
 
+  function setLogbookLabelGroupValue(label) {
+    document.querySelectorAll('#logbook-label-group .logbook-label-opt').forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.label === label);
+    });
+    updateLogbookDurationFieldVisibility();
+    const errorEl = document.getElementById('logbook-error');
+    if (errorEl) errorEl.textContent = '';
+  }
+
+  function getLogbookLabelGroupValue() {
+    return document.querySelector('#logbook-label-group .logbook-label-opt.is-active')?.dataset.label || 'done';
+  }
+
+  // The duration field only makes sense for something that already happened —
+  // a Planned/Want-to-do entry has no real elapsed time to report yet.
+  function updateLogbookDurationFieldVisibility() {
+    const input = document.getElementById('logbook-duration-input');
+    if (!input) return;
+    const isDone = getLogbookLabelGroupValue() === 'done';
+    input.style.display = isDone ? '' : 'none';
+    if (!isDone) input.value = '';
+  }
+
   function openLogbookModal() {
     if (!activeRouteId) return;
     const route = getActiveRoute();
@@ -2809,10 +3132,20 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     document.getElementById('logbook-modal-hint').style.display = route.source === 'saved' ? 'none' : '';
     document.getElementById('logbook-add-row').style.display    = route.source === 'saved' ? '' : 'none';
     document.getElementById('logbook-date-input').value  = new Date().toISOString().slice(0, 10);
+    document.getElementById('logbook-duration-input').value = '';
     document.getElementById('logbook-notes-input').value = '';
+    document.getElementById('logbook-error').textContent = '';
+    setLogbookLabelGroupValue('done');
     const addBtn = document.getElementById('logbook-add-btn');
     delete addBtn.dataset.editingId;
     addBtn.textContent = 'Add entry';
+    const filterRow = document.getElementById('logbook-filter-row');
+    if (filterRow) {
+      filterRow.dataset.filter = 'all';
+      filterRow.querySelectorAll('.logbook-filter-pill').forEach(btn => {
+        btn.classList.toggle('is-active', btn.dataset.filter === 'all');
+      });
+    }
     renderLogbookList(route);
     document.getElementById('logbook-modal').style.display = 'flex';
   }
@@ -2822,21 +3155,32 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   }
 
   function renderLogbookList(route) {
-    const entries = [...getRouteLogbook(route)].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    const filter = document.getElementById('logbook-filter-row')?.dataset.filter || 'all';
+    const entries = [...getRouteLogbook(route)]
+      .filter(e => filter === 'all' || getLogbookEntryLabel(e) === filter)
+      .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     const list = document.getElementById('logbook-list');
     if (!entries.length) {
       list.innerHTML = '<p class="privacy-zones-empty">No logbook entries yet.</p>';
       return;
     }
-    list.innerHTML = entries.map(e => `
+    list.innerHTML = entries.map(e => {
+      const label = getLogbookEntryLabel(e);
+      const durationStr = label === 'done' && e.durationSec ? GPXParser.formatDuration(e.durationSec) : '';
+      return `
       <div class="logbook-entry" data-id="${e.id}">
         <div class="logbook-entry-header">
           <span class="logbook-entry-date">${escapeHtml(e.date)}</span>
-          <button class="logbook-entry-edit" data-id="${e.id}" title="Edit">✎</button>
-          <button class="logbook-entry-remove" data-id="${e.id}" title="Delete">${SVG_TRASH}</button>
+          <span class="logbook-entry-label logbook-entry-label--${label}">${escapeHtml(LOGBOOK_LABELS[label].text)}</span>
+          ${durationStr ? `<span class="logbook-entry-duration">⏱ ${escapeHtml(durationStr)}</span>` : ''}
+          <span class="logbook-entry-actions">
+            <button class="logbook-entry-edit" data-id="${e.id}" title="Edit">✎</button>
+            <button class="logbook-entry-remove" data-id="${e.id}" title="Delete">${SVG_TRASH}</button>
+          </span>
         </div>
         <p class="logbook-entry-notes">${escapeHtml(e.notes || '')}</p>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     list.querySelectorAll('.logbook-entry-remove').forEach(btn => {
       armDeleteBtn(btn, () => {
@@ -2851,6 +3195,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         if (!entry) return;
         document.getElementById('logbook-date-input').value  = entry.date;
         document.getElementById('logbook-notes-input').value = entry.notes || '';
+        setLogbookLabelGroupValue(getLogbookEntryLabel(entry));
+        document.getElementById('logbook-duration-input').value =
+          entry.durationSec ? fmtDurationForEdit(entry.durationSec) : '';
         const addBtn = document.getElementById('logbook-add-btn');
         addBtn.dataset.editingId = id;
         addBtn.textContent = 'Save changes';
@@ -2859,20 +3206,40 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   }
 
   function handleLogbookSave() {
-    const btn   = document.getElementById('logbook-add-btn');
-    const date  = document.getElementById('logbook-date-input').value;
-    const notes = document.getElementById('logbook-notes-input').value.trim();
+    const btn      = document.getElementById('logbook-add-btn');
+    const errorEl  = document.getElementById('logbook-error');
+    const date     = document.getElementById('logbook-date-input').value;
+    const notes    = document.getElementById('logbook-notes-input').value.trim();
+    const label    = getLogbookLabelGroupValue();
+    const rawDuration = document.getElementById('logbook-duration-input').value.trim();
     if (!date || !activeRouteId) return;
+
+    // Duration is mandatory for a Done entry — the track's own timing is only
+    // orientative, so we need the time the user actually reports.
+    let durationSec = null;
+    if (label === 'done') {
+      durationSec = rawDuration ? parseDurationInput(rawDuration) : null;
+      if (!durationSec) {
+        errorEl.textContent = rawDuration
+          ? 'Could not understand that duration — try "3:24", "3h24m", or "204" (minutes).'
+          : 'Activity duration is required for a Done entry.';
+        return;
+      }
+    }
+    errorEl.textContent = '';
+
     const editingId = btn.dataset.editingId ? Number(btn.dataset.editingId) : null;
     if (editingId) {
-      updateLogbookEntry(activeRouteId, editingId, { date, notes });
+      updateLogbookEntry(activeRouteId, editingId, { date, notes, label, durationSec });
       delete btn.dataset.editingId;
       btn.textContent = 'Add entry';
     } else {
-      addLogbookEntry(activeRouteId, date, notes);
+      addLogbookEntry(activeRouteId, date, notes, label, durationSec);
     }
     document.getElementById('logbook-date-input').value  = new Date().toISOString().slice(0, 10);
+    document.getElementById('logbook-duration-input').value = '';
     document.getElementById('logbook-notes-input').value = '';
+    setLogbookLabelGroupValue('done');
     renderLogbookList(getActiveRoute());
     showShareToast(editingId ? 'Logbook entry updated.' : 'Logbook entry added.');
   }
@@ -2893,6 +3260,632 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     btn.title = isSaved
       ? 'Logbook' + (count ? ` (${count} entries)` : '')
       : 'Save this route to your library to keep a logbook';
+  }
+
+  // ── Calendar & Stats scope: global (no route selected) or a single route ────
+
+  // Returns the currently loaded route, or null if none is selected — the
+  // Calendar and Stats modals scope themselves to this route when set.
+  function getScopedRoute() {
+    // Overview mode shows every route on the map at once — even if a route was
+    // previously loaded, that view is "no route in particular", so scope global.
+    if (!activeRouteId || overviewMode) return null;
+    return savedRoutes.find(r => r.id === activeRouteId) || uploadedRoutes.find(r => r.id === activeRouteId) || null;
+  }
+
+  // Flattens logbook entries into a common shape for aggregation. Pass a
+  // route to scope to just that route's entries; omit it for every route.
+  function getLogbookEntriesForScope(scopeRoute) {
+    const all = [];
+    const routes = scopeRoute ? [scopeRoute] : [...savedRoutes, ...uploadedRoutes];
+    routes.forEach(route => {
+      getRouteLogbook(route).forEach(entry => {
+        all.push({ ...entry, label: getLogbookEntryLabel(entry), routeId: route.id, routeName: route.name });
+      });
+    });
+    return all;
+  }
+
+  function openCalendarModal() {
+    const today = new Date();
+    calendarViewYear  = today.getFullYear();
+    calendarViewMonth = today.getMonth();
+    const scopeRoute = getScopedRoute();
+    document.getElementById('calendar-modal-title').textContent = scopeRoute ? `Calendar — ${scopeRoute.name}` : 'Calendar';
+    renderCalendarMonth(calendarViewYear, calendarViewMonth);
+    document.getElementById('calendar-modal').style.display = 'flex';
+  }
+
+  function closeCalendarModal() {
+    document.getElementById('calendar-modal').style.display = 'none';
+    hideDayPopover();
+  }
+
+  const CALENDAR_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  const CALENDAR_WEEKDAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  function renderCalendarMonth(year, month) {
+    document.getElementById('calendar-month-label').textContent = `${CALENDAR_MONTH_NAMES[month]} ${year}`;
+
+    const weekdayRow = document.getElementById('calendar-weekday-row');
+    if (!weekdayRow.childElementCount) {
+      weekdayRow.innerHTML = CALENDAR_WEEKDAY_NAMES.map(d => `<span>${d}</span>`).join('');
+    }
+
+    const entriesByDate = {};
+    getLogbookEntriesForScope(getScopedRoute()).forEach(e => {
+      (entriesByDate[e.date] || (entriesByDate[e.date] = [])).push(e);
+    });
+
+    const firstOfMonth   = new Date(year, month, 1);
+    const daysInMonth    = new Date(year, month + 1, 0).getDate();
+    const leadingBlanks  = (firstOfMonth.getDay() + 6) % 7; // Monday-start
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const cells = [];
+    for (let i = leadingBlanks - 1; i >= 0; i--) {
+      cells.push({ day: daysInPrevMonth - i, otherMonth: true, dateStr: null });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      cells.push({ day: d, otherMonth: false, dateStr });
+    }
+    while (cells.length % 7 !== 0) {
+      cells.push({ day: cells.length - (leadingBlanks + daysInMonth) + 1, otherMonth: true, dateStr: null });
+    }
+
+    const grid = document.getElementById('calendar-grid');
+    grid.innerHTML = '';
+    cells.forEach(cell => {
+      const div = document.createElement('div');
+      div.className = 'calendar-day-cell';
+      if (cell.otherMonth) div.classList.add('is-other-month');
+      if (cell.dateStr === todayStr) div.classList.add('is-today');
+
+      const dayLabel = document.createElement('span');
+      dayLabel.textContent = String(cell.day);
+      div.appendChild(dayLabel);
+
+      const entries = cell.dateStr ? (entriesByDate[cell.dateStr] || []) : [];
+      if (entries.length) {
+        div.classList.add('has-entries');
+        const dotsRow = document.createElement('span');
+        dotsRow.className = 'calendar-day-dots';
+        const labelsPresent = [...new Set(entries.map(e => e.label))];
+        labelsPresent.slice(0, 3).forEach(label => {
+          const dot = document.createElement('span');
+          dot.className = `calendar-dot calendar-dot--${label}`;
+          dotsRow.appendChild(dot);
+        });
+        div.appendChild(dotsRow);
+        div.addEventListener('click', () => showDayPopover(cell.dateStr, entries));
+      }
+      grid.appendChild(div);
+    });
+  }
+
+  function formatCalendarPopoverDate(dateStr) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  function truncateNotes(notes, max = 60) {
+    if (!notes) return '';
+    return notes.length > max ? notes.slice(0, max).trimEnd() + '…' : notes;
+  }
+
+  function showDayPopover(dateStr, entries) {
+    document.getElementById('calendar-day-popover-date').textContent = formatCalendarPopoverDate(dateStr);
+    const list = document.getElementById('calendar-day-popover-list');
+    list.innerHTML = entries.map(e => `
+      <div class="calendar-day-popover-entry" data-route-id="${e.routeId}">
+        <div class="logbook-entry-header">
+          <span class="calendar-day-popover-entry-name">${escapeHtml(e.routeName || 'Untitled route')}</span>
+          <span class="logbook-entry-label logbook-entry-label--${e.label}">${escapeHtml(LOGBOOK_LABELS[e.label].text)}</span>
+        </div>
+        ${e.notes ? `<p class="calendar-day-popover-entry-notes">${escapeHtml(truncateNotes(e.notes))}</p>` : ''}
+      </div>`).join('');
+    list.querySelectorAll('.calendar-day-popover-entry').forEach(el => {
+      el.addEventListener('click', () => jumpToRoute(el.dataset.routeId));
+    });
+    document.getElementById('calendar-day-popover').style.display = 'block';
+  }
+
+  function hideDayPopover() {
+    const popover = document.getElementById('calendar-day-popover');
+    if (popover) popover.style.display = 'none';
+  }
+
+  // Closes whichever of the Calendar/Stats modals is open, then opens the given
+  // route — resolving its <li> even if it's currently hidden by an active filter,
+  // since loadRoute() unconditionally calls listItem.classList.add('active').
+  function jumpToRoute(routeId) {
+    const route = savedRoutes.find(r => String(r.id) === String(routeId))
+               || uploadedRoutes.find(r => String(r.id) === String(routeId));
+    if (!route) { showShareToast('This route is no longer in your library.'); return; }
+
+    document.getElementById('calendar-modal').style.display = 'none';
+    document.getElementById('stats-modal').style.display = 'none';
+    hideDayPopover();
+
+    let li = document.querySelector(`.route-item[data-id="${route.id}"]`);
+    if (!li) {
+      searchQuery = '';
+      activeCategory = null;
+      activeDifficulty = null;
+      const searchInput = document.getElementById('search-input');
+      if (searchInput) searchInput.value = '';
+      renderFileTree();
+      li = document.querySelector(`.route-item[data-id="${route.id}"]`);
+    }
+    if (li) loadRoute(route, li);
+  }
+
+  // ── Overdue Planned route check-in ────────────────────────────────────────────
+  // On app load, any Planned entry whose date has passed gets queued for a
+  // one-at-a-time "did you do this?" prompt — confirming converts it to Done
+  // (asking for the actual duration), declining removes the entry entirely.
+
+  function findOverduePlannedEntries() {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return getLogbookEntriesForScope(null)
+      .filter(e => e.label === 'planned' && e.date && e.date < todayStr);
+  }
+
+  function queueOverduePlannedCheckins() {
+    const overdue = findOverduePlannedEntries();
+    if (!overdue.length) return;
+    plannedCheckinQueue = overdue.map(e => ({ routeId: e.routeId, entryId: e.id }));
+    showNextPlannedCheckin();
+  }
+
+  function closePlannedCheckinModal() {
+    document.getElementById('planned-checkin-modal').style.display = 'none';
+  }
+
+  function showNextPlannedCheckin() {
+    if (!plannedCheckinQueue.length) { closePlannedCheckinModal(); return; }
+    const { routeId, entryId } = plannedCheckinQueue[0];
+    const route = savedRoutes.find(r => r.id === routeId) || uploadedRoutes.find(r => r.id === routeId);
+    const entry = route ? getRouteLogbook(route).find(e => e.id === entryId) : null;
+
+    // Route or entry vanished (deleted) since queuing — skip it silently.
+    if (!route || !entry) {
+      plannedCheckinQueue.shift();
+      showNextPlannedCheckin();
+      return;
+    }
+
+    document.getElementById('planned-checkin-route-name').textContent = route.name || 'Untitled route';
+    document.getElementById('planned-checkin-date').textContent = `Planned for ${entry.date}`;
+    document.getElementById('planned-checkin-duration-input').value = '';
+    document.getElementById('planned-checkin-error').textContent = '';
+    document.getElementById('planned-checkin-ask-step').style.display = '';
+    document.getElementById('planned-checkin-duration-step').style.display = 'none';
+    document.getElementById('planned-checkin-modal').style.display = 'flex';
+  }
+
+  // Dismissing without answering leaves the entry untouched — just skip it
+  // for the rest of this queue-drain; it'll be queued again on the next load.
+  function dismissCurrentPlannedCheckin() {
+    plannedCheckinQueue.shift();
+    showNextPlannedCheckin();
+  }
+
+  function resolveCurrentPlannedCheckin(keepAsDone, durationSec) {
+    const current = plannedCheckinQueue.shift();
+    if (current) {
+      if (keepAsDone) {
+        updateLogbookEntry(current.routeId, current.entryId, { label: 'done', durationSec });
+      } else {
+        removeLogbookEntry(current.routeId, current.entryId);
+      }
+    }
+    showNextPlannedCheckin();
+  }
+
+  // ── Stats Dashboard ───────────────────────────────────────────────────────────
+
+  // Fixed-order categorical palette (validated for CVD/contrast in both themes).
+  // Assigned once per category key below, rather than by array index after a
+  // sort/filter, so a given activity always renders in the same color —
+  // color follows the entity, never its rank.
+  const STATS_CHART_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300'];
+  const STATS_CATEGORY_COLOR = {};
+  Object.keys(CATEGORIES).concat('unknown').forEach((catKey, i) => {
+    STATS_CATEGORY_COLOR[catKey] = STATS_CHART_COLORS[i % STATS_CHART_COLORS.length];
+  });
+
+  // True if the entry's date falls inside the currently-navigated Month/Year
+  // window (statsViewYear/statsViewMonth); 'all' has no window.
+  function isDateInStatsPeriod(dateStr, periodMode) {
+    if (!dateStr) return false;
+    if (periodMode === 'month') return dateStr.slice(0, 7) === `${statsViewYear}-${String(statsViewMonth + 1).padStart(2, '0')}`;
+    if (periodMode === 'year')  return dateStr.slice(0, 4) === String(statsViewYear);
+    return true; // 'all'
+  }
+
+  function computeStatsData(periodMode, scopeRoute) {
+    const doneEntries = getLogbookEntriesForScope(scopeRoute).filter(e => e.label === 'done');
+    const entries = doneEntries.filter(e => isDateInStatsPeriod(e.date, periodMode));
+
+    let totalDistanceKm = 0, totalElevationM = 0, totalDurationSec = 0;
+    let doneCount = 0, skippedCount = 0;
+    const byActivity = {}; // categoryKey -> { distanceKm, count }
+    const byRoute    = {}; // routeId -> { routeName, count }
+
+    entries.forEach(e => {
+      doneCount++;
+      const route = savedRoutes.find(r => r.id === e.routeId) || uploadedRoutes.find(r => r.id === e.routeId);
+      if (!route) { skippedCount++; return; }
+      const stats = getRouteSearchStats(route);
+      if (!stats) { skippedCount++; return; }
+
+      totalDistanceKm  += stats.distance;
+      totalElevationM  += stats.elevationGain;
+      // The user-reported time (what the clock actually said) takes priority
+      // over the track's own timestamps, which are often just orientative.
+      const durationSec = e.durationSec != null ? e.durationSec : stats.durationSec;
+      if (durationSec != null) totalDurationSec += durationSec;
+
+      const catKey = getActivityCategory(route.activity) || 'unknown';
+      const a = byActivity[catKey] || (byActivity[catKey] = { distanceKm: 0, count: 0 });
+      a.distanceKm += stats.distance;
+      a.count++;
+
+      const r = byRoute[route.id] || (byRoute[route.id] = { routeName: route.name, count: 0 });
+      r.count++;
+    });
+
+    return { totalDistanceKm, totalElevationM, totalDurationSec, doneCount, skippedCount, byActivity, byRoute };
+  }
+
+  // Buckets Done entries for the "Activity over time" chart, at whatever
+  // granularity matches the current period mode: days within the viewed
+  // month, months within the viewed year, or years across all time.
+  function computeTimeSeriesData(periodMode, scopeRoute) {
+    const doneEntries = getLogbookEntriesForScope(scopeRoute).filter(e => e.label === 'done');
+    const buckets = {}; // bucketKey -> { byCategory: { catKey: distanceKm } }
+
+    const bucketKeyFor = date => {
+      if (periodMode === 'month') return date.slice(0, 10); // YYYY-MM-DD
+      if (periodMode === 'year')  return date.slice(0, 7);   // YYYY-MM
+      return date.slice(0, 4);                                // YYYY
+    };
+
+    doneEntries.forEach(e => {
+      if (!e.date) return;
+      if (periodMode === 'month' && e.date.slice(0, 7) !== `${statsViewYear}-${String(statsViewMonth + 1).padStart(2, '0')}`) return;
+      if (periodMode === 'year'  && e.date.slice(0, 4) !== String(statsViewYear)) return;
+
+      const key = bucketKeyFor(e.date);
+      const b = buckets[key] || (buckets[key] = { byCategory: {} });
+      const route = savedRoutes.find(r => r.id === e.routeId) || uploadedRoutes.find(r => r.id === e.routeId);
+      const stats = route ? getRouteSearchStats(route) : null;
+      if (stats) {
+        const catKey = getActivityCategory(route.activity) || 'unknown';
+        b.byCategory[catKey] = (b.byCategory[catKey] || 0) + stats.distance;
+      }
+    });
+
+    return buckets;
+  }
+
+  function fmtStatsDuration(secs) {
+    if (!secs) return '—';
+    const h = Math.floor(secs / 3600);
+    const m = Math.round((secs % 3600) / 60);
+    return `${h}h ${String(m).padStart(2, '0')}m`;
+  }
+
+  function getStatsPeriodMode() {
+    return document.querySelector('#stats-period-toggle .stats-period-opt.is-active')?.dataset.period || 'year';
+  }
+
+  function openStatsModal() {
+    const today = new Date();
+    statsViewYear  = today.getFullYear();
+    statsViewMonth = today.getMonth();
+    statsProgressMetric = 'duration';
+    document.querySelectorAll('#stats-period-toggle .stats-period-opt').forEach(btn =>
+      btn.classList.toggle('is-active', btn.dataset.period === 'year')
+    );
+    const scopeRoute = getScopedRoute();
+    document.getElementById('stats-modal-title').textContent = scopeRoute ? `Stats — ${scopeRoute.name}` : 'Stats Dashboard';
+    // Global-only sections (breakdown by activity, most-repeated list) are
+    // meaningless for a single route; the per-route progress chart replaces them.
+    document.getElementById('stats-global-sections').style.display = scopeRoute ? 'none' : '';
+    document.getElementById('stats-progress-section').style.display = scopeRoute ? '' : 'none';
+    refreshStatsModal();
+    document.getElementById('stats-modal').style.display = 'flex';
+  }
+
+  function closeStatsModal() {
+    document.getElementById('stats-modal').style.display = 'none';
+  }
+
+  function refreshStatsModal() {
+    const period = getStatsPeriodMode();
+    const scopeRoute = getScopedRoute();
+    const data = computeStatsData(period, scopeRoute);
+    renderStatsTotals(data);
+    if (scopeRoute) {
+      renderProgressChart(scopeRoute);
+    } else {
+      renderActivityBreakdownChart(data);
+      renderMonthlyChart();
+      renderMostRepeatedList(data);
+    }
+  }
+
+  function renderStatsTotals(data) {
+    const tiles = document.getElementById('stats-tiles');
+    const items = [
+      { value: fmtDist(data.totalDistanceKm), label: 'Total distance' },
+      { value: fmtElev(data.totalElevationM), label: 'Total elevation gain' },
+      { value: String(data.doneCount), label: 'Routes completed' },
+      { value: fmtStatsDuration(data.totalDurationSec), label: 'Total time' },
+    ];
+    tiles.innerHTML = items.map(it => `
+      <div class="stats-tile">
+        <div class="stats-tile-value">${escapeHtml(it.value)}</div>
+        <div class="stats-tile-label">${escapeHtml(it.label)}</div>
+      </div>`).join('');
+  }
+
+  function renderActivityBreakdownChart(data) {
+    if (statsActivityChart) { statsActivityChart.destroy(); statsActivityChart = null; }
+    const canvas = document.getElementById('stats-activity-chart');
+    if (!canvas) return;
+
+    const isImperial = units === 'imperial';
+    const dFactor  = isImperial ? KM_TO_MI : 1;
+    const distUnit = isImperial ? 'mi' : 'km';
+
+    let rows = Object.keys(CATEGORIES)
+      .map(key => ({ key, name: getCategoryName(key), distanceKm: data.byActivity[key]?.distanceKm || 0 }))
+      .concat(data.byActivity.unknown ? [{ key: 'unknown', name: 'Other', distanceKm: data.byActivity.unknown.distanceKm }] : [])
+      .filter(r => r.distanceKm > 0)
+      .sort((a, b) => b.distanceKm - a.distanceKm);
+
+    // No data for this period — still render the chart frame (axis, gridlines)
+    // rather than letting the whole section disappear; a single zero-height
+    // placeholder bar keeps the categorical y-axis and "Distance" x-axis visible.
+    const isEmpty = !rows.length;
+    if (isEmpty) rows = [{ key: 'unknown', name: 'No activity in this period', distanceKm: 0 }];
+
+    statsActivityChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: rows.map(r => r.name),
+        datasets: [{
+          data: rows.map(r => parseFloat((r.distanceKm * dFactor).toFixed(1))),
+          backgroundColor: rows.map(r => STATS_CATEGORY_COLOR[r.key]),
+          borderRadius: 4,
+          maxBarThickness: 24,
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: !isEmpty,
+            callbacks: { label: item => `${item.raw} ${distUnit}` },
+            backgroundColor: 'rgba(15,23,42,0.85)',
+            titleColor: '#94a3b8',
+            bodyColor: '#f1f5f9',
+            padding: 10,
+            cornerRadius: 6,
+          },
+        },
+        scales: {
+          x: {
+            min: 0,
+            max: isEmpty ? 10 : undefined,
+            title: { display: true, text: `Distance (${distUnit})`, color: '#64748b', font: { size: 11 } },
+            ticks: { color: '#64748b' },
+            grid: { color: 'rgba(100,116,139,0.1)' },
+          },
+          y: {
+            ticks: { color: isEmpty ? '#94a3b8' : '#64748b' },
+            grid: { display: false },
+          },
+        },
+      },
+    });
+  }
+
+  const MONTH_SHORT_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  // Nav label + bucket keys/labels for the "Activity over time" chart, one
+  // per period mode: days in the viewed month, months in the viewed year,
+  // or every year that has at least one Done entry (global scope only).
+  function getStatsTimeAxis(periodMode, scopeRoute) {
+    if (periodMode === 'month') {
+      const daysInMonth = new Date(statsViewYear, statsViewMonth + 1, 0).getDate();
+      const keys = Array.from({ length: daysInMonth }, (_, d) =>
+        `${statsViewYear}-${String(statsViewMonth + 1).padStart(2, '0')}-${String(d + 1).padStart(2, '0')}`);
+      return { navLabel: `${MONTH_SHORT_NAMES[statsViewMonth]} ${statsViewYear}`, keys, labels: keys.map(k => k.slice(8)) };
+    }
+    if (periodMode === 'year') {
+      const keys = MONTH_SHORT_NAMES.map((_, m) => `${statsViewYear}-${String(m + 1).padStart(2, '0')}`);
+      return { navLabel: String(statsViewYear), keys, labels: MONTH_SHORT_NAMES };
+    }
+    // 'all' — one bucket per year that actually has data, chronological, no nav.
+    const years = [...new Set(getLogbookEntriesForScope(scopeRoute)
+      .filter(e => e.label === 'done' && e.date)
+      .map(e => e.date.slice(0, 4)))].sort();
+    const keys = years.length ? years : [String(new Date().getFullYear())];
+    return { navLabel: null, keys, labels: keys };
+  }
+
+  // Stacked by activity category so the total bar height still reads as
+  // "distance that period" while each color-coded segment shows the activity mix.
+  function renderMonthlyChart() {
+    if (statsMonthlyChart) { statsMonthlyChart.destroy(); statsMonthlyChart = null; }
+
+    const periodMode = getStatsPeriodMode();
+    const scopeRoute = getScopedRoute();
+    const axis = getStatsTimeAxis(periodMode, scopeRoute);
+    document.getElementById('stats-time-label').textContent = axis.navLabel || '';
+    document.getElementById('stats-time-nav').style.display = axis.navLabel ? '' : 'none';
+
+    const canvas = document.getElementById('stats-monthly-chart');
+    if (!canvas) return;
+
+    const isImperial = units === 'imperial';
+    const dFactor  = isImperial ? KM_TO_MI : 1;
+    const distUnit = isImperial ? 'mi' : 'km';
+
+    const buckets = computeTimeSeriesData(periodMode, scopeRoute);
+
+    const catKeys = Object.keys(CATEGORIES).concat('unknown')
+      .filter(catKey => axis.keys.some(key => (buckets[key]?.byCategory[catKey] || 0) > 0));
+
+    const datasets = catKeys.map(catKey => ({
+      label: catKey === 'unknown' ? 'Other' : getCategoryName(catKey),
+      data: axis.keys.map(key => parseFloat(((buckets[key]?.byCategory[catKey] || 0) * dFactor).toFixed(1))),
+      backgroundColor: STATS_CATEGORY_COLOR[catKey],
+      borderRadius: 4,
+      maxBarThickness: 24,
+    }));
+
+    statsMonthlyChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: { labels: axis.labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: datasets.length > 1,
+            position: 'bottom',
+            labels: { color: '#94a3b8', boxWidth: 10, font: { size: 11 } },
+          },
+          tooltip: {
+            callbacks: { label: item => `${item.dataset.label}: ${item.raw} ${distUnit}` },
+            backgroundColor: 'rgba(15,23,42,0.85)',
+            titleColor: '#94a3b8',
+            bodyColor: '#f1f5f9',
+            padding: 10,
+            cornerRadius: 6,
+          },
+        },
+        scales: {
+          x: { stacked: true, ticks: { color: '#64748b' }, grid: { display: false } },
+          y: {
+            stacked: true,
+            title: { display: true, text: `Distance (${distUnit})`, color: '#64748b', font: { size: 11 } },
+            ticks: { color: '#64748b' },
+            grid: { color: 'rgba(100,116,139,0.1)' },
+            beginAtZero: true,
+          },
+        },
+      },
+    });
+  }
+
+  // Per-route progress: one bar per Done attempt, chronological, showing
+  // either duration or avg speed — so the user can see if they're improving.
+  function renderProgressChart(route) {
+    if (statsProgressChart) { statsProgressChart.destroy(); statsProgressChart = null; }
+    const canvas = document.getElementById('stats-progress-chart');
+    if (!canvas) return;
+
+    const isImperial = units === 'imperial';
+    const stats = getRouteSearchStats(route);
+    const distanceKm = stats ? stats.distance : null;
+
+    const attempts = getRouteLogbook(route)
+      .filter(e => getLogbookEntryLabel(e) === 'done')
+      .map(e => {
+        const durationSec = e.durationSec != null ? e.durationSec : stats?.durationSec;
+        const speedKmh = durationSec && distanceKm ? (distanceKm / durationSec) * 3600 : null;
+        return { date: e.date, durationSec, speedKmh };
+      })
+      .filter(a => a.durationSec != null)
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+    const emptyMsg = document.getElementById('stats-progress-empty');
+    if (!attempts.length) {
+      canvas.style.display = 'none';
+      emptyMsg.style.display = '';
+      return;
+    }
+    canvas.style.display = '';
+    emptyMsg.style.display = 'none';
+
+    const isDuration = statsProgressMetric === 'duration';
+    const values = attempts.map(a => isDuration
+      ? parseFloat((a.durationSec / 60).toFixed(1))
+      : a.speedKmh != null ? parseFloat(((isImperial ? a.speedKmh * KM_TO_MI : a.speedKmh)).toFixed(1)) : null
+    );
+    const unitLabel = isDuration ? 'min' : (isImperial ? 'mph' : 'km/h');
+
+    statsProgressChart = new Chart(canvas.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: attempts.map(a => a.date),
+        datasets: [{
+          data: values,
+          backgroundColor: '#3987e5',
+          borderRadius: 4,
+          maxBarThickness: 32,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: { label: item => `${item.raw} ${unitLabel}` },
+            backgroundColor: 'rgba(15,23,42,0.85)',
+            titleColor: '#94a3b8',
+            bodyColor: '#f1f5f9',
+            padding: 10,
+            cornerRadius: 6,
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#64748b' }, grid: { display: false } },
+          y: {
+            title: { display: true, text: isDuration ? `Duration (${unitLabel})` : `Avg speed (${unitLabel})`, color: '#64748b', font: { size: 11 } },
+            ticks: { color: '#64748b' },
+            grid: { color: 'rgba(100,116,139,0.1)' },
+            beginAtZero: true,
+          },
+        },
+      },
+    });
+  }
+
+  function renderMostRepeatedList(data) {
+    const list = document.getElementById('stats-most-repeated-list');
+    const rows = Object.entries(data.byRoute)
+      .map(([routeId, r]) => ({ routeId, ...r }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    if (!rows.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No completed routes logged yet.</p>';
+      return;
+    }
+
+    list.innerHTML = rows.map((r, i) => `
+      <div class="stats-repeated-entry" data-route-id="${r.routeId}">
+        <span class="stats-repeated-rank">#${i + 1}</span>
+        <span class="stats-repeated-name">${escapeHtml(r.routeName || 'Untitled route')}</span>
+        <span class="stats-repeated-count">×${r.count}</span>
+      </div>`).join('');
+    list.querySelectorAll('.stats-repeated-entry').forEach(el => {
+      el.addEventListener('click', () => jumpToRoute(el.dataset.routeId));
+    });
   }
 
   // ── Share via GitHub Gist ─────────────────────────────────────────────────────
@@ -4809,19 +5802,160 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
   // ── Dark mode toggle ──────────────────────────────────────────────────────────
 
+  // The app's default light/dark map canvas pair — auto-switched by the theme
+  // toggle. Any other layer means the user explicitly picked one via the layers
+  // menu, so the toggle leaves it alone rather than overriding their choice.
+  const MAP_DEFAULT_LIGHT_LAYER = 'esri-light-gray';
+  const MAP_DEFAULT_DARK_LAYER  = 'esri-dark-gray';
+
   function setupTheme() {
     const btn = document.getElementById('theme-toggle-btn');
     if (!btn) return;
 
     btn.addEventListener('click', () => {
       const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const currentLayer = MapManager.getCurrentLayer();
       if (isDark) {
         document.documentElement.removeAttribute('data-theme');
         localStorage.setItem('gpxlib-theme', 'light');
+        if (currentLayer === MAP_DEFAULT_DARK_LAYER) {
+          MapManager.setMapType(MAP_DEFAULT_LIGHT_LAYER);
+          renderLayerList();
+        }
       } else {
         document.documentElement.setAttribute('data-theme', 'dark');
         localStorage.setItem('gpxlib-theme', 'dark');
+        if (currentLayer === MAP_DEFAULT_LIGHT_LAYER) {
+          MapManager.setMapType(MAP_DEFAULT_DARK_LAYER);
+          renderLayerList();
+        }
       }
+    });
+  }
+
+  // ── Overdue Planned check-in modal wiring ─────────────────────────────────────
+
+  function setupPlannedCheckinModal() {
+    const modal = document.getElementById('planned-checkin-modal');
+    if (!modal) return;
+
+    document.getElementById('planned-checkin-yes').addEventListener('click', () => {
+      document.getElementById('planned-checkin-ask-step').style.display = 'none';
+      document.getElementById('planned-checkin-duration-step').style.display = '';
+      document.getElementById('planned-checkin-duration-input').focus();
+    });
+
+    document.getElementById('planned-checkin-back').addEventListener('click', () => {
+      document.getElementById('planned-checkin-duration-step').style.display = 'none';
+      document.getElementById('planned-checkin-ask-step').style.display = '';
+    });
+
+    document.getElementById('planned-checkin-confirm-done').addEventListener('click', () => {
+      const raw = document.getElementById('planned-checkin-duration-input').value.trim();
+      const durationSec = raw ? parseDurationInput(raw) : null;
+      if (!durationSec) {
+        document.getElementById('planned-checkin-error').textContent = raw
+          ? 'Could not understand that duration — try "3:24", "3h24m", or "204" (minutes).'
+          : 'Activity duration is required to mark this as Done.';
+        return;
+      }
+      resolveCurrentPlannedCheckin(true, durationSec);
+      showShareToast('Marked as Done.');
+    });
+
+    document.getElementById('planned-checkin-no').addEventListener('click', () => {
+      resolveCurrentPlannedCheckin(false, null);
+      showShareToast('Removed from logbook.');
+    });
+
+    document.getElementById('planned-checkin-later').addEventListener('click', dismissCurrentPlannedCheckin);
+  }
+
+  // ── Calendar button + modal wiring ────────────────────────────────────────────
+
+  function setupCalendarButton() {
+    const btn = document.getElementById('calendar-btn');
+    if (!btn) return;
+    btn.addEventListener('click', openCalendarModal);
+
+    document.getElementById('calendar-modal-close').addEventListener('click', closeCalendarModal);
+    document.getElementById('calendar-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeCalendarModal();
+    });
+    document.getElementById('calendar-day-popover-close').addEventListener('click', hideDayPopover);
+
+    document.getElementById('calendar-prev-btn').addEventListener('click', () => {
+      calendarViewMonth--;
+      if (calendarViewMonth < 0) { calendarViewMonth = 11; calendarViewYear--; }
+      hideDayPopover();
+      renderCalendarMonth(calendarViewYear, calendarViewMonth);
+    });
+    document.getElementById('calendar-next-btn').addEventListener('click', () => {
+      calendarViewMonth++;
+      if (calendarViewMonth > 11) { calendarViewMonth = 0; calendarViewYear++; }
+      hideDayPopover();
+      renderCalendarMonth(calendarViewYear, calendarViewMonth);
+    });
+    document.getElementById('calendar-today-btn').addEventListener('click', () => {
+      const today = new Date();
+      calendarViewYear  = today.getFullYear();
+      calendarViewMonth = today.getMonth();
+      hideDayPopover();
+      renderCalendarMonth(calendarViewYear, calendarViewMonth);
+    });
+  }
+
+  // ── Stats dashboard button + modal wiring ─────────────────────────────────────
+
+  function setupStatsButton() {
+    const btn = document.getElementById('stats-btn');
+    if (!btn) return;
+    btn.addEventListener('click', openStatsModal);
+
+    document.getElementById('stats-modal-close').addEventListener('click', closeStatsModal);
+    document.getElementById('stats-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeStatsModal();
+    });
+
+    document.querySelectorAll('#stats-period-toggle .stats-period-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        document.querySelectorAll('#stats-period-toggle .stats-period-opt').forEach(b =>
+          b.classList.toggle('is-active', b === opt)
+        );
+        refreshStatsModal();
+      });
+    });
+
+    document.getElementById('stats-time-prev').addEventListener('click', () => {
+      const period = getStatsPeriodMode();
+      if (period === 'month') {
+        statsViewMonth--;
+        if (statsViewMonth < 0) { statsViewMonth = 11; statsViewYear--; }
+      } else if (period === 'year') {
+        statsViewYear--;
+      }
+      refreshStatsModal();
+    });
+    document.getElementById('stats-time-next').addEventListener('click', () => {
+      const period = getStatsPeriodMode();
+      if (period === 'month') {
+        statsViewMonth++;
+        if (statsViewMonth > 11) { statsViewMonth = 0; statsViewYear++; }
+      } else if (period === 'year') {
+        statsViewYear++;
+      }
+      refreshStatsModal();
+    });
+
+    document.querySelectorAll('#stats-progress-toggle .stats-period-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        document.querySelectorAll('#stats-progress-toggle .stats-period-opt').forEach(b =>
+          b.classList.toggle('is-active', b === opt)
+        );
+        statsProgressMetric = opt.dataset.metric;
+        const scopeRoute = getScopedRoute();
+        if (scopeRoute) renderProgressChart(scopeRoute);
+      });
     });
   }
 
@@ -5163,10 +6297,13 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     // Render the map immediately, even with an empty library
     MapManager.ensureMap();
+    if (document.documentElement.getAttribute('data-theme') === 'dark') {
+      MapManager.setMapType(MAP_DEFAULT_DARK_LAYER);
+    }
 
     // Deploy date + GitHub link
     document.getElementById('deploy-date').textContent = DEPLOY_DATE;
-    document.querySelector('a.sidebar-info-btn').href = GITHUB_REPO;
+    document.querySelector('a.sidebar-toolbar-btn').href = GITHUB_REPO;
 
     // Sort
     setupSort();
@@ -5187,6 +6324,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     setupSidebarResize();
     setupSplitHandle();
     setupTheme();
+    setupCalendarButton();
+    setupStatsButton();
+    setupPlannedCheckinModal();
 
     // Track Creator
     setupTrackCreator();
@@ -5247,6 +6387,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         updateStatDisplay();
         if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats);
         if (currentWeatherData) renderWeatherDays(currentWeatherData.daily);
+        renderSearchFilterChips(parseNumericFilters(searchQuery).filters);
       });
     });
 
@@ -5399,6 +6540,18 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       if (e.target === e.currentTarget) closeLogbookModal();
     });
     document.getElementById('logbook-add-btn').addEventListener('click', handleLogbookSave);
+    document.querySelectorAll('#logbook-label-group .logbook-label-opt').forEach(btn => {
+      btn.addEventListener('click', () => setLogbookLabelGroupValue(btn.dataset.label));
+    });
+    document.querySelectorAll('#logbook-filter-row .logbook-filter-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById('logbook-filter-row').dataset.filter = btn.dataset.filter;
+        document.querySelectorAll('#logbook-filter-row .logbook-filter-pill').forEach(b =>
+          b.classList.toggle('is-active', b === btn)
+        );
+        renderLogbookList(getActiveRoute());
+      });
+    });
 
     // Places panel + modal
     document.getElementById('btn-places').addEventListener('click', () => {
