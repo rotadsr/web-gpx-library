@@ -2514,6 +2514,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .stats-year-nav { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 400; color: var(--text-muted); }
 .stats-section-title .stats-period-toggle { margin-bottom: 0; }
+.stats-progress-time-nav { justify-content: center; margin-bottom: 8px; }
 
 .stats-chart-wrap { position: relative; height: 220px; margin-bottom: 8px; }
 

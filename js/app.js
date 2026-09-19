@@ -3584,6 +3584,20 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     return document.querySelector('#stats-period-toggle .stats-period-opt.is-active')?.dataset.period || 'year';
   }
 
+  // Shared by both the global and per-route time-nav arrows: steps
+  // statsViewMonth/statsViewYear by one unit in the current period mode
+  // ('all' has no nav, so it's a no-op).
+  function stepStatsTimeNav(direction) {
+    const period = getStatsPeriodMode();
+    if (period === 'month') {
+      statsViewMonth += direction;
+      if (statsViewMonth < 0)  { statsViewMonth = 11; statsViewYear--; }
+      if (statsViewMonth > 11) { statsViewMonth = 0;  statsViewYear++; }
+    } else if (period === 'year') {
+      statsViewYear += direction;
+    }
+  }
+
   function openStatsModal() {
     const today = new Date();
     statsViewYear  = today.getFullYear();
@@ -3790,26 +3804,31 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     });
   }
 
-  // Per-route progress: one bar per Done attempt, chronological, showing
-  // either duration or avg speed — so the user can see if they're improving.
+  // Per-route progress, bucketed at the same granularity as the global
+  // "Activity over time" chart (days/months/years for Month/Year/All) — one
+  // bar per bucket, averaging duration/speed across attempts that share it.
   function renderProgressChart(route) {
     if (statsProgressChart) { statsProgressChart.destroy(); statsProgressChart = null; }
     const canvas = document.getElementById('stats-progress-chart');
     if (!canvas) return;
+
+    const periodMode = getStatsPeriodMode();
+    const axis = getStatsTimeAxis(periodMode, route);
+    document.getElementById('stats-progress-time-label').textContent = axis.navLabel || '';
+    document.getElementById('stats-progress-time-nav').style.display = axis.navLabel ? '' : 'none';
 
     const isImperial = units === 'imperial';
     const stats = getRouteSearchStats(route);
     const distanceKm = stats ? stats.distance : null;
 
     const attempts = getRouteLogbook(route)
-      .filter(e => getLogbookEntryLabel(e) === 'done')
+      .filter(e => getLogbookEntryLabel(e) === 'done' && e.date)
       .map(e => {
         const durationSec = e.durationSec != null ? e.durationSec : stats?.durationSec;
         const speedKmh = durationSec && distanceKm ? (distanceKm / durationSec) * 3600 : null;
         return { date: e.date, durationSec, speedKmh };
       })
-      .filter(a => a.durationSec != null)
-      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+      .filter(a => a.durationSec != null);
 
     const emptyMsg = document.getElementById('stats-progress-empty');
     if (!attempts.length) {
@@ -3821,21 +3840,39 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     emptyMsg.style.display = 'none';
 
     const isDuration = statsProgressMetric === 'duration';
-    const values = attempts.map(a => isDuration
-      ? parseFloat((a.durationSec / 60).toFixed(1))
-      : a.speedKmh != null ? parseFloat(((isImperial ? a.speedKmh * KM_TO_MI : a.speedKmh)).toFixed(1)) : null
-    );
+    const bucketKeyFor = date => periodMode === 'month' ? date.slice(0, 10) : periodMode === 'year' ? date.slice(0, 7) : date.slice(0, 4);
+
+    // Average duration/speed per bucket (summing wouldn't read as "progress"
+    // if a route was repeated more than once within the same bucket).
+    const buckets = {}; // bucketKey -> { total, count }
+    attempts.forEach(a => {
+      const key = bucketKeyFor(a.date);
+      const val = isDuration ? a.durationSec : a.speedKmh;
+      if (val == null) return;
+      const b = buckets[key] || (buckets[key] = { total: 0, count: 0 });
+      b.total += val;
+      b.count++;
+    });
+
     const unitLabel = isDuration ? 'min' : (isImperial ? 'mph' : 'km/h');
+    const values = axis.keys.map(key => {
+      const b = buckets[key];
+      if (!b) return null;
+      const avg = b.total / b.count;
+      return isDuration
+        ? parseFloat((avg / 60).toFixed(1))
+        : parseFloat(((isImperial ? avg * KM_TO_MI : avg)).toFixed(1));
+    });
 
     statsProgressChart = new Chart(canvas.getContext('2d'), {
       type: 'bar',
       data: {
-        labels: attempts.map(a => a.date),
+        labels: axis.labels,
         datasets: [{
           data: values,
           backgroundColor: '#3987e5',
           borderRadius: 4,
-          maxBarThickness: 32,
+          maxBarThickness: periodMode === 'month' ? 16 : 32,
         }],
       },
       options: {
@@ -5927,24 +5964,22 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     });
 
     document.getElementById('stats-time-prev').addEventListener('click', () => {
-      const period = getStatsPeriodMode();
-      if (period === 'month') {
-        statsViewMonth--;
-        if (statsViewMonth < 0) { statsViewMonth = 11; statsViewYear--; }
-      } else if (period === 'year') {
-        statsViewYear--;
-      }
+      stepStatsTimeNav(-1);
       refreshStatsModal();
     });
     document.getElementById('stats-time-next').addEventListener('click', () => {
-      const period = getStatsPeriodMode();
-      if (period === 'month') {
-        statsViewMonth++;
-        if (statsViewMonth > 11) { statsViewMonth = 0; statsViewYear++; }
-      } else if (period === 'year') {
-        statsViewYear++;
-      }
+      stepStatsTimeNav(1);
       refreshStatsModal();
+    });
+    document.getElementById('stats-progress-time-prev').addEventListener('click', () => {
+      stepStatsTimeNav(-1);
+      const scopeRoute = getScopedRoute();
+      if (scopeRoute) renderProgressChart(scopeRoute);
+    });
+    document.getElementById('stats-progress-time-next').addEventListener('click', () => {
+      stepStatsTimeNav(1);
+      const scopeRoute = getScopedRoute();
+      if (scopeRoute) renderProgressChart(scopeRoute);
     });
 
     document.querySelectorAll('#stats-progress-toggle .stats-period-opt').forEach(opt => {
