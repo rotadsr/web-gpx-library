@@ -3842,8 +3842,11 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const isDuration = statsProgressMetric === 'duration';
     const bucketKeyFor = date => periodMode === 'month' ? date.slice(0, 10) : periodMode === 'year' ? date.slice(0, 7) : date.slice(0, 4);
 
-    // Average duration/speed per bucket (summing wouldn't read as "progress"
-    // if a route was repeated more than once within the same bucket).
+    // Speed is always averaged per bucket (summing speeds is meaningless).
+    // Duration is the total time spent — summed — in Year/All views, where a
+    // bucket spans a month or a year; in Month view each bucket is a single
+    // day, so it stays averaged across same-day attempts.
+    const sumDuration = isDuration && periodMode !== 'month';
     const buckets = {}; // bucketKey -> { total, count }
     attempts.forEach(a => {
       const key = bucketKeyFor(a.date);
@@ -3858,10 +3861,10 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const values = axis.keys.map(key => {
       const b = buckets[key];
       if (!b) return null;
-      const avg = b.total / b.count;
+      const val = sumDuration ? b.total : b.total / b.count;
       return isDuration
-        ? parseFloat((avg / 60).toFixed(1))
-        : parseFloat(((isImperial ? avg * KM_TO_MI : avg)).toFixed(1));
+        ? parseFloat((val / 60).toFixed(1))
+        : parseFloat(((isImperial ? val * KM_TO_MI : val)).toFixed(1));
     });
 
     statsProgressChart = new Chart(canvas.getContext('2d'), {
@@ -3892,7 +3895,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         scales: {
           x: { ticks: { color: '#64748b' }, grid: { display: false } },
           y: {
-            title: { display: true, text: isDuration ? `Duration (${unitLabel})` : `Avg speed (${unitLabel})`, color: '#64748b', font: { size: 11 } },
+            title: { display: true, text: isDuration ? `${sumDuration ? 'Total' : ''} Duration (${unitLabel})`.trim() : `Avg speed (${unitLabel})`, color: '#64748b', font: { size: 11 } },
             ticks: { color: '#64748b' },
             grid: { color: 'rgba(100,116,139,0.1)' },
             beginAtZero: true,
