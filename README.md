@@ -30,10 +30,26 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 📓 Logbook
 - **Keep a journal per route** — log every time you did the route, with a date and free-text notes (e.g. "Better for summer, start 10AM–12PM to avoid the heat")
-- Multiple entries per route, sorted newest first, each editable or removable
+- **Label each entry** — Done, Planned, or Want to do; the date represents when it happened (Done) or when you intend to do it (Planned/Want to do)
+- Multiple entries per route, sorted newest first, each editable or removable; filter the list by label
 - Opens from the notebook icon in the route header; a small badge shows how many entries a route has
 - Only available for routes saved to **My Library** — session uploads must be saved first, since logbook entries live with the route record
 - Logbook entries are persisted in IndexedDB with the route itself, so they round-trip through Export Library, Import, and GitHub auto-backup automatically
+- **Overdue Planned check-in** — when you open the app and a Planned entry's date has passed, you're asked whether you did it: confirm to convert it to Done (enter how long it took), or decline to remove it from the logbook. Multiple overdue entries are asked one at a time; dismissing without answering asks again next time
+
+### 📅 Calendar
+- **Global calendar** — click the calendar icon in the sidebar header to see every route's logbook entries across your whole library on one month grid
+- Days with entries show a colour-coded dot per label — 🟢 Done, 🔵 Planned, 🟡 Want to do
+- Click a day to see that day's entries in a popover; click an entry to jump straight to that route
+- Navigate months with the prev/next arrows, or jump back to the current month with **Today**
+
+### 📊 Stats Dashboard
+- **Click the bar-chart icon** in the sidebar header for an aggregate view of everything logged as **Done** (Planned/Want-to-do entries aren't counted)
+- **Totals** — total distance, total elevation gained, times completed, and total time, toggle between all-time and this year
+- **Activity breakdown** — a bar chart of distance by activity category
+- **Activity over time** — a monthly bar chart with its own year navigator, so you can spot your busiest months
+- **Top 10 most repeated routes** — a ranked list of the routes you've logged as Done the most; click one to jump to it
+- All figures respect your metric/imperial unit setting
 
 ### 🧭 Track Creator
 - **Build a route by clicking the map** — open **"···"** → **Create Track…** in the library header, then click points on the map to build a route from scratch
@@ -69,9 +85,18 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 🔍 Search & Filter
 - Full-text search across route names, descriptions, and tags
+- **Accent-insensitive** — type `alas` to find "Alàs" or `pedreries` to find "Pedreríess"; case doesn't matter either
 - **Location search** — search by city, county, region, or country (e.g. "Alps", "Catalunya", "Norway")
 - **Country flag emoji search** — type a flag like 🇫🇷, 🇪🇸, or 🇯🇵 to filter routes by country
 - **Difficulty search** — type `easy`, `moderate`, `hard`, or `expert` to filter by difficulty level
+- **Range filters** — type `>` / `<` expressions to filter by distance, elevation gain, gradient, duration, or average speed:
+  - Distance: `>20km`, `<100km`, `>20km<50km` (also `mi`, e.g. `<10mi`)
+  - Elevation gain: `>1200m`, `<100m`, `>100m<500m` (also `ft`, e.g. `>3000ft`)
+  - Gradient: `>8%`, `<7%`, `>3%<6%`
+  - Duration: `<1h`, `>2h`
+  - Average speed: `>10kmh` or `>10km/h` (also `mph`)
+  - Combine any number of them, and mix with text search — e.g. `>20km <3% <100m` or `hiking >20km`
+  - Active range filters show as removable chips below the search box
 - Semantic keyword expansion (e.g. "winter" finds all snow activities)
 - **Activity filter** — category pills (hiking, cycling, water sports, etc.) with icons
 - **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
@@ -191,9 +216,22 @@ Two options are available under **"···"** → **Import** in the library heade
 ### Keep a Logbook
 1. Load a route that's already in **My Library** (session uploads must be saved first — see [Save to Library](#save-to-library))
 2. Click the **notebook icon** in the route header to open the Logbook
-3. Pick a **date**, write your **notes** (e.g. "Better for summer, start 10AM–12PM to avoid the heat"), then click **Add entry**
-4. Entries are listed newest first; click the pencil (✎) to edit one, or the trash icon to delete it
+3. Pick a **date**, write your **notes** (e.g. "Better for summer, start 10AM–12PM to avoid the heat"), choose a **label** — Done, Planned, or Want to do — then click **Add entry**
+4. Entries are listed newest first; click the pencil (✎) to edit one, or the trash icon to delete it; use the filter pills above the list to show only one label
 5. A small badge on the notebook icon shows how many entries a route has at a glance
+
+### Browse the Calendar
+1. Click the **calendar icon** in the sidebar header
+2. Days with logbook entries show a colour-coded dot — 🟢 Done, 🔵 Planned, 🟡 Want to do
+3. Click a day to see that day's entries in a popover; click an entry to close the calendar and jump straight to that route
+4. Use the **‹ ›** arrows to navigate months, or **Today** to jump back to the current month
+
+### View the Stats Dashboard
+1. Click the **bar-chart icon** in the sidebar header
+2. See your **totals** — distance, elevation gained, times completed, and time spent — for all-time or just this year
+3. See a **breakdown by activity** and an **activity-over-time** chart with its own year navigator
+4. See your **most repeated routes**; click one to jump to it
+5. Only logbook entries labeled **Done** count toward these stats — Planned and Want-to-do entries don't
 
 ### Share a Route
 - Load any route from the sidebar
@@ -373,6 +411,7 @@ Resort data is cached in localStorage for 24 hours so subsequent page loads are 
 - **Newest / Oldest** — by upload date
 - **By activity** — grouped by sport category
 - **🟢 Easy first / ⚫ Hard first** — by difficulty rating
+- **Distance, Elevation gain, Gradient, Duration, Speed** — shortest/longest, lowest/highest, flattest/steepest, quickest/slowest, slowest/fastest; routes without the relevant data sink to the bottom
 
 ### Activity Types (25+)
 **Hiking & Walking**: Hike, Trail Walking, Ultralight Hiking, Fell Running  
