@@ -7,50 +7,46 @@
 const ACTIVITIES = {
 
   // ── Hiking & Walking ──────────────────────────────────────────────────────
-  hike:             { name: 'Hike',             emoji: '🥾', category: 'hiking' },
-  trailWalking:     { name: 'Trail Walking',     emoji: '🚶', category: 'hiking' },
-  ultralightHiking: { name: 'Ultralight Hiking', emoji: '🎒', category: 'hiking' },
-  fellRunning:      { name: 'Fell Running',      emoji: '🏃', category: 'hiking' },
+  hike: { name: 'Hike', emoji: '🥾', category: 'hiking' },
+  trailWalking: { name: 'Trail Walking', emoji: '🚶', category: 'hiking' },
 
   // ── Mountain Sports ───────────────────────────────────────────────────────
-  mountaineering:    { name: 'Mountaineering',      emoji: '⛰️', category: 'mountainSports' },
-  climbing:          { name: 'Rock Climbing',        emoji: '🧗', category: 'mountainSports' },
-  viaFerrata:        { name: 'Via Ferrata',          emoji: '🧗', category: 'mountainSports' },
-  alpineSki:         { name: 'Alpine Skiing',        emoji: '⛷️', category: 'mountainSports' },
-  skiMountaineering: { name: 'Ski Mountaineering',   emoji: '⛷️', category: 'mountainSports' },
+  mountaineering: { name: 'Mountaineering', emoji: '⛰️', category: 'mountainSports' },
+  climbing: { name: 'Rock Climbing', emoji: '🧗', category: 'mountainSports' },
+  viaFerrata: { name: 'Via Ferrata', emoji: '🧗', category: 'mountainSports' },
+  canyoning: { name: 'Canyoning', emoji: '🧗🏼‍♂️', category: 'mountainSports' },
 
   // ── Cycling ───────────────────────────────────────────────────────────────
-  roadBike:     { name: 'Road Bike',            emoji: '🚴', category: 'cycling' },
-  gravelBike:   { name: 'Gravel Bike',          emoji: '🚴', category: 'cycling' },
-  cycling:      { name: 'Cycling',              emoji: '🚲', category: 'cycling' },
-  trailCycling: { name: 'Trail Cycling',        emoji: '🚵', category: 'cycling' },
-  mtb:          { name: 'Mountain Biking (MTB)',emoji: '🚵', category: 'cycling' },
-  eMtb:         { name: 'E-MTB',               emoji: '⚡', category: 'cycling' },
-  enduroBike:   { name: 'Enduro Bike',          emoji: '🚵', category: 'cycling' },
-  downhillBike: { name: 'Downhill Bike',        emoji: '🚵', category: 'cycling' },
-  bikepacking:  { name: 'Bikepacking',          emoji: '🧳', category: 'cycling' },
+  roadBike: { name: 'Road Bike', emoji: '🚴', category: 'cycling' },
+  gravelBike: { name: 'Gravel Bike', emoji: '🚴', category: 'cycling' },
+  mtb: { name: 'Mountain Biking', emoji: '🚵', category: 'cycling' },
+  eMtb: { name: 'E-MTB', emoji: '⚡', category: 'cycling' },
 
   // ── Snow ──────────────────────────────────────────────────────────────────
-  touringSki:     { name: 'Touring Ski',        emoji: '🎿', category: 'snow' },
-  backcountrySki: { name: 'Backcountry Skiing', emoji: '🎿', category: 'snow' },
-  snowshoeing:    { name: 'Snowshoeing',        emoji: '❄️', category: 'snow' },
+  alpineSki: { name: 'Alpine Skiing', emoji: '⛷️', category: 'snow' },
+  snowboard: { name: 'Snowboarding', emoji: '🏂', category: 'snow' },
+  touringSki: { name: 'Ski Touring', emoji: '🎿', category: 'snow' },
+  snowshoeing: { name: 'Snowshoeing', emoji: '❄️', category: 'snow' },
 
   // ── Running ───────────────────────────────────────────────────────────────
-  running:      { name: 'Running',       emoji: '🏃', category: 'running' },
+  running: { name: 'Running', emoji: '🏃', category: 'running' },
   trailRunning: { name: 'Trail Running', emoji: '🏃', category: 'running' },
 
   // ── Water Sports ──────────────────────────────────────────────────────────
-  kayaking:    { name: 'Kayaking / Paddling', emoji: '🛶', category: 'water' },
-  packrafting: { name: 'Packrafting',         emoji: '⛵', category: 'water' },
+  kayaking: { name: 'Kayaking / Paddling', emoji: '🛶', category: 'water' },
+  packrafting: { name: 'Packrafting', emoji: '⛵', category: 'water' },
+  surfing: { name: 'Surfing', emoji: '🏄', category: 'water' },
+  windsurfing: { name: 'Windsurfing', emoji: '🏄', category: 'water' },
+  swimming: { name: 'Swimming', emoji: '🏊', category: 'water' },
 };
 
 const CATEGORIES = {
-  hiking:         { name: 'Hiking & Walking', emoji: '🥾' },
-  mountainSports: { name: 'Mountain Sports',  emoji: '⛰️' },
-  cycling:        { name: 'Cycling',          emoji: '🚴' },
-  snow:           { name: 'Snow',             emoji: '❄️' },
-  running:        { name: 'Running',          emoji: '🏃' },
-  water:          { name: 'Water Sports',     emoji: '🛶' },
+  hiking: { name: 'Hiking & Walking', emoji: '🥾' },
+  mountainSports: { name: 'Mountain Sports', emoji: '⛰️' },
+  cycling: { name: 'Cycling', emoji: '🚴' },
+  snow: { name: 'Snow', emoji: '❄️' },
+  running: { name: 'Running', emoji: '🏃' },
+  water: { name: 'Water Sports', emoji: '🛶' },
 };
 
 /**
@@ -60,42 +56,48 @@ const CATEGORIES = {
  */
 const SEARCH_KEYWORDS = {
   // Winter / snow
-  winter:   ['snow', 'mountainSports'],
-  snow:     ['snow'],
-  ski:      ['snow', 'mountainSports'],
-  skiing:   ['snow', 'mountainSports'],
-  nordic:   ['snow'],
+  winter: ['snow'],
+  snow: ['snow'],
+  ski: ['snow'],
+  skiing: ['snow'],
+  snowboard: ['snow'],
+  nordic: ['snow'],
   snowshoe: ['snow'],
+  skitouring: ['snow'],
   // Water
-  water:    ['water'],
-  paddle:   ['water'],
-  kayak:    ['water'],
-  river:    ['water'],
-  raft:     ['water'],
+  water: ['water'],
+  paddle: ['water'],
+  kayak: ['water'],
+  river: ['water'],
+  raft: ['water'],
+  surf: ['water'],
+  windsurf: ['water'],
+  swim: ['water'],
   // Cycling
-  bike:     ['cycling'],
-  cycl:     ['cycling'],
-  mtb:      ['cycling'],
-  gravel:   ['cycling'],
-  enduro:   ['cycling'],
+  bike: ['cycling'],
+  cycl: ['cycling'],
+  mtb: ['cycling'],
+  gravel: ['cycling'],
+  enduro: ['cycling'],
   downhill: ['cycling'],
   bikepack: ['cycling'],
   electric: ['cycling'],
-  ebike:    ['cycling'],
+  ebike: ['cycling'],
   // Hiking / walking
-  hike:     ['hiking'],
-  hiking:   ['hiking'],
-  walk:     ['hiking'],
-  trail:    ['hiking', 'running', 'cycling'],
-  trek:     ['hiking'],
+  hike: ['hiking'],
+  hiking: ['hiking'],
+  walk: ['hiking'],
+  trail: ['hiking', 'running', 'cycling'],
+  trek: ['hiking'],
   backpack: ['hiking'],
   // Mountain
   mountain: ['mountainSports', 'hiking'],
-  alpine:   ['mountainSports'],
-  climb:    ['mountainSports'],
-  ferrata:  ['mountainSports'],
+  alpine: ['mountainSports', 'snow'],
+  climb: ['mountainSports'],
+  ferrata: ['mountainSports'],
+  canyon: ['mountainSports'],
   // Running
-  run:      ['running'],
+  run: ['running'],
 };
 
 /**
@@ -113,19 +115,40 @@ function getKeywordCategories(query) {
   return [...cats];
 }
 
+/**
+ * Retired/merged activity keys, mapped to their closest surviving equivalent —
+ * so routes saved before a catalogue cleanup still resolve to a real, sensible
+ * activity instead of falling back to a raw internal key string.
+ */
+const ACTIVITY_ALIASES = {
+  enduroBike: 'mtb',
+  downhillBike: 'mtb',
+  trailCycling: 'mtb',
+  cycling: 'roadBike',
+  bikepacking: 'gravelBike',
+  backcountrySki: 'touringSki',
+  skiMountaineering: 'touringSki',
+  fellRunning: 'trailRunning',
+  ultralightHiking: 'hike',
+};
+
+function resolveActivityKey(key) {
+  return ACTIVITIES[key] ? key : ACTIVITY_ALIASES[key] || key;
+}
+
 /** Emoji icon for a given activity key (falls back to 🗺️). */
 function getActivityEmoji(key) {
-  return ACTIVITIES[key]?.emoji ?? '🗺️';
+  return ACTIVITIES[resolveActivityKey(key)]?.emoji ?? '🗺️';
 }
 
 /** Display name for a given activity key. */
 function getActivityName(key) {
-  return ACTIVITIES[key]?.name ?? (key || '');
+  return ACTIVITIES[resolveActivityKey(key)]?.name ?? (key || '');
 }
 
 /** Category key for a given activity key (or null). */
 function getActivityCategory(key) {
-  return ACTIVITIES[key]?.category ?? null;
+  return ACTIVITIES[resolveActivityKey(key)]?.category ?? null;
 }
 
 /** Display name for a category key. */
