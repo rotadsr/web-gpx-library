@@ -7,14 +7,15 @@
 
 /* eslint-disable */
 const PLACE_CATEGORIES = {
-  water:     { name: 'Water / Fountain',         emoji: '💧' },
-  refuge:    { name: 'Mountain Refuge / Shelter', emoji: '🏠' },
-  viewpoint: { name: 'Viewpoint',                 emoji: '🔭' },
-  parking:   { name: 'Parking',                   emoji: '🅿️' },
-  pumptrack: { name: 'Pumptrack',                 emoji: '🚴' },
-  camping:   { name: 'Camping',                   emoji: '⛺' },
-  climbing:  { name: 'Climbing / Bouldering',     emoji: '🧗' },
-  other:     { name: 'Other',                     emoji: '📍' },
+  water: { name: 'Water / Fountain', emoji: '💧' },
+  refuge: { name: 'Mountain Refuge / Shelter', emoji: '🏠' },
+  viewpoint: { name: 'Viewpoint', emoji: '🔭' },
+  parking: { name: 'Parking', emoji: '🅿️' },
+  pumptrack: { name: 'Pumptrack', emoji: '🚴' },
+  camping: { name: 'Camping', emoji: '⛺' },
+  climbing: { name: 'Climbing / Bouldering', emoji: '🧗' },
+  summit: { name: 'Summit', emoji: '⛰️' },
+  other: { name: 'Other', emoji: '📍' },
 };
 
 const PLACE_CATEGORIES_KEY = 'gpxlib-place-categories';
@@ -28,7 +29,7 @@ function saveCustomPlaceCategories(list) {
   localStorage.setItem(PLACE_CATEGORIES_KEY, JSON.stringify(list));
 }
 
-/** Add a user-defined category; returns its generated key. */  
+/** Add a user-defined category; returns its generated key. */
 function addPlaceCategory(name, emoji) {
   const custom = getCustomPlaceCategories();
   const key = 'custom-' + Date.now();
@@ -57,4 +58,4 @@ function getPlaceCategory(key) {
 }
 
 function getPlaceCategoryEmoji(key) { return getPlaceCategory(key).emoji; }
-function getPlaceCategoryName(key)  { return getPlaceCategory(key).name; }
+function getPlaceCategoryName(key) { return getPlaceCategory(key).name; }
