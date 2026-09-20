@@ -45,10 +45,13 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 📊 Stats Dashboard
 - **Click the bar-chart icon** in the sidebar header for an aggregate view of everything logged as **Done** (Planned/Want-to-do entries aren't counted)
-- **Totals** — total distance, total elevation gained, times completed, and total time, toggle between all-time and this year
+- **Month / Year / All** — pick the period; the prev/next arrows step through days (Month), months (Year), or aren't shown at all (All, since there's nothing to page through)
+- **Totals** — total distance, total elevation gained, routes completed, and total time for the selected period
 - **Activity breakdown** — a bar chart of distance by activity category
-- **Activity over time** — a monthly bar chart with its own year navigator, so you can spot your busiest months
+- **Activity over time** — a stacked bar chart (days/months/years to match the period) coloured by activity, so you can see both your busiest periods and the mix of sports
 - **Top 10 most repeated routes** — a ranked list of the routes you've logged as Done the most; click one to jump to it
+- **Track other activities** — log a sport, date, distance, elevation gain, and duration for an activity with no saved route (a ski resort day, a ride tracked on a smartwatch you don't want to keep as a route). Counted in every total/chart above, but never shown as a route in your library, and excluded from the most-repeated list
+- Selecting a specific route scopes the dashboard to just that route (progress-over-time chart with a Duration/Avg speed toggle) instead of the global view; go back to **Show all** to see everything again
 - All figures respect your metric/imperial unit setting
 
 ### 🧭 Track Creator
@@ -228,10 +231,13 @@ Two options are available under **"···"** → **Import** in the library heade
 
 ### View the Stats Dashboard
 1. Click the **bar-chart icon** in the sidebar header
-2. See your **totals** — distance, elevation gained, times completed, and time spent — for all-time or just this year
-3. See a **breakdown by activity** and an **activity-over-time** chart with its own year navigator
-4. See your **most repeated routes**; click one to jump to it
-5. Only logbook entries labeled **Done** count toward these stats — Planned and Want-to-do entries don't
+2. Pick **Month**, **Year**, or **All**, then use the **‹ ›** arrows to navigate (Month/Year only — All has nothing to page through)
+3. See your **totals** — distance, elevation gained, routes completed, and time spent — for the selected period
+4. See a **breakdown by activity** and a **stacked activity-over-time** chart coloured by activity
+5. See your **most repeated routes**; click one to jump to it
+6. Only logbook entries labeled **Done** count toward these stats — Planned and Want-to-do entries don't
+7. Click **Track other activities** to log a sport, date, distance, elevation gain, and duration for something with no saved route (a ski day, a smartwatch-tracked ride) — it's counted in every stat above but never appears as a route in your library
+8. Selecting a route from the sidebar scopes the whole dashboard to just that route, with a progress-over-time chart (Duration / Avg speed) instead of the global sections — click **Show all** to go back
 
 ### Share a Route
 - Load any route from the sidebar

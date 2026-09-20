@@ -753,6 +753,8 @@
     <div id="stats-tiles" class="stats-tiles"></div>
 
     <div id="stats-global-sections">
+      <button id="stats-log-manual-btn" class="privacy-option-btn stats-log-manual-btn">＋ Track other activities</button>
+
       <h4 class="stats-section-title">Activity breakdown</h4>
       <div class="stats-chart-wrap"><canvas id="stats-activity-chart"></canvas></div>
 
@@ -787,6 +789,33 @@
         <canvas id="stats-progress-chart"></canvas>
         <p id="stats-progress-empty" class="privacy-zones-empty" style="display:none">No completed attempts with a recorded duration yet.</p>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Manual (trackless) Activity Modal ───────────────────────────────────── -->
+<div id="manual-activity-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="manual-activity-title">
+  <div class="share-dialog logbook-dialog">
+    <div class="share-dialog-header">
+      <h3 id="manual-activity-title">Track other activities</h3>
+      <button id="manual-activity-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">For activities without a saved route — a ski day, a ride tracked elsewhere. Counted in your stats, never shown as a route.</p>
+
+    <div id="manual-activity-list" class="privacy-zones-list"></div>
+
+    <div class="logbook-add-row">
+      <select id="manual-activity-select" class="share-url-input"></select>
+      <div class="logbook-date-duration-row">
+        <input type="date" id="manual-activity-date-input" class="share-url-input logbook-date-input" />
+        <input type="text" id="manual-activity-duration-input" class="share-url-input logbook-duration-input" placeholder="Duration e.g. 3:24" title="How long the activity took you — e.g. 3:24, 3h24m, or 204 (minutes)." />
+      </div>
+      <div class="logbook-date-duration-row">
+        <input type="text" id="manual-activity-distance-input" class="share-url-input" placeholder="Distance (km)" />
+        <input type="text" id="manual-activity-elevation-input" class="share-url-input" placeholder="Elevation gain (m)" />
+      </div>
+      <p id="manual-activity-error" class="pat-error"></p>
+      <button id="manual-activity-add-btn" class="share-copy-btn privacy-add-btn">Add activity</button>
     </div>
   </div>
 </div>

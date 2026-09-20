@@ -2364,6 +2364,44 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   line-height: 1;
 }
 
+/* ── Manual activity list — collapsible year > month groups ───────────────────── */
+.manual-activity-year-group { margin-bottom: 4px; }
+.manual-activity-month-group { margin-bottom: 4px; margin-left: 14px; }
+.manual-activity-year-header,
+.manual-activity-month-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+}
+.manual-activity-year-header { font-size: 13px; color: var(--text); }
+.manual-activity-year-header:hover,
+.manual-activity-month-header:hover { color: var(--text); }
+.manual-activity-month-chevron {
+  display: inline-block;
+  font-size: 10px;
+  transition: transform 0.15s;
+}
+.manual-activity-year-group.collapsed > .manual-activity-year-header .manual-activity-month-chevron,
+.manual-activity-month-group.collapsed .manual-activity-month-chevron { transform: rotate(-90deg); }
+.manual-activity-month-count {
+  margin-left: auto;
+  background: rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.manual-activity-year-group.collapsed .manual-activity-year-months { display: none; }
+.manual-activity-month-group.collapsed .manual-activity-month-entries { display: none; }
+
 /* ── Calendar modal ───────────────────────────────────────────────────────────── */
 .calendar-dialog { width: min(560px, 94vw); }
 
@@ -2461,6 +2499,8 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   transition: background 0.1s;
 }
 .calendar-day-popover-entry:hover { background: rgba(59,130,246,0.08); }
+.calendar-day-popover-entry.is-static { cursor: default; }
+.calendar-day-popover-entry.is-static:hover { background: none; }
 .calendar-day-popover-entry-name { font-weight: 600; font-size: 12px; color: var(--text); }
 .calendar-day-popover-entry-notes {
   font-size: 11px;
@@ -2486,6 +2526,8 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 }
 .stats-period-opt:hover { background: rgba(59,130,246,0.2); border-color: var(--primary); color: #bfdbfe; }
 .stats-period-opt.is-active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+.stats-log-manual-btn { flex: none; width: 100%; margin-bottom: 16px; }
 
 .stats-tiles {
   display: grid;
