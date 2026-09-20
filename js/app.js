@@ -1112,13 +1112,19 @@
     renderFileTree();
   }
 
+  // savedRoutes minus the synthetic "Other" pseudo-route — for every surface
+  // that browses/lists real routes (file tree, overview map, filter pills).
+  function getBrowsableSavedRoutes() {
+    return savedRoutes.filter(r => !r.isOtherRoute);
+  }
+
   // ── Activity category pills ───────────────────────────────────────────────────
 
   function buildCategoryPills() {
     const container = document.getElementById('category-pills');
     container.innerHTML = '';
 
-    const allRoutes = [...savedRoutes, ...uploadedRoutes];
+    const allRoutes = [...getBrowsableSavedRoutes(), ...uploadedRoutes];
     Object.entries(CATEGORIES).forEach(([key, cat]) => {
       const hasRoutes = allRoutes.some(r => getActivityCategory(r.activity) === key);
       if (!hasRoutes) return;
@@ -1153,7 +1159,7 @@
     const container = document.getElementById('difficulty-pills');
     if (!container) return;
 
-    const allRoutes = [...savedRoutes, ...uploadedRoutes];
+    const allRoutes = [...getBrowsableSavedRoutes(), ...uploadedRoutes];
     if (!allRoutes.length) { section.style.display = 'none'; return; }
     section.style.display = '';
 
@@ -1188,7 +1194,7 @@
     const container = document.getElementById('logbook-status-pills');
     if (!container) return;
 
-    const allRoutes = [...savedRoutes, ...uploadedRoutes];
+    const allRoutes = [...getBrowsableSavedRoutes(), ...uploadedRoutes];
     const hasAnyEntries = allRoutes.some(r => getRouteLogbook(r).length > 0);
     if (!hasAnyEntries) { section.style.display = 'none'; return; }
     section.style.display = '';
@@ -1326,7 +1332,7 @@
 
     renderSearchFilterChips(parseNumericFilters(searchQuery).filters);
 
-    const filteredSaved   = sortRoutes(filterRoutes(savedRoutes));
+    const filteredSaved   = sortRoutes(filterRoutes(getBrowsableSavedRoutes()));
     const filteredUploads = sortRoutes(filterBySearch(uploadedRoutes));
 
     if (!filteredSaved.length && !filteredUploads.length) {
@@ -1865,6 +1871,19 @@
     };
   }
 
+  // Manual (trackless) entries carry their own numbers; route-backed entries
+  // derive them from the GPX track via getRouteSearchStats. This is the single
+  // fork point so aggregation code doesn't need to know which kind it's looking at.
+  function getEntryContribution(entry, route) {
+    if (entry.distanceKm != null || entry.elevationM != null) {
+      const distance = entry.distanceKm || 0;
+      const durationSec = entry.durationSec ?? null;
+      const speed = durationSec && distance ? (distance / durationSec) * 3600 : null;
+      return { distance, elevationGain: entry.elevationM || 0, durationSec, speed };
+    }
+    return getRouteSearchStats(route);
+  }
+
   function matchesNumericFilters(route, filters) {
     const metrics = Object.keys(filters);
     if (!metrics.length) return true;
@@ -1980,7 +1999,7 @@
   let skiOverlayActive = false;
 
   async function enterOverview() {
-    const filteredSaved   = sortRoutes(filterRoutes(savedRoutes));
+    const filteredSaved   = sortRoutes(filterRoutes(getBrowsableSavedRoutes()));
     const filteredUploads = sortRoutes(filterBySearch(uploadedRoutes));
     const allFiltered     = [...filteredSaved, ...filteredUploads];
 
@@ -3273,6 +3292,29 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     return savedRoutes.find(r => r.id === activeRouteId) || uploadedRoutes.find(r => r.id === activeRouteId) || null;
   }
 
+  // The synthetic "Other" pseudo-route hosts logbook entries for activities
+  // with no track (a ski day, a ride tracked on a smartwatch you don't want
+  // saved as a route). Created lazily on first use via the same Storage path
+  // every real route uses, then found again by its marker field — never by a
+  // hardcoded id, since IndexedDB's autoIncrement isn't deterministic.
+  async function getOrCreateOtherRoute() {
+    const existing = savedRoutes.find(r => r.isOtherRoute);
+    if (existing) return existing;
+    const id = await Storage.saveRoute({
+      name: 'Other', description: '', activity: null, tags: [], folder: null, gpxText: null, isOtherRoute: true,
+    });
+    const route = {
+      name: 'Other', description: '', activity: null, tags: [], folder: null, gpxText: null, isOtherRoute: true,
+      id, source: 'saved', createdAt: new Date().toISOString(),
+    };
+    savedRoutes.push(route);
+    return route;
+  }
+
+  function findOtherRoute() {
+    return savedRoutes.find(r => r.isOtherRoute) || null;
+  }
+
   // Flattens logbook entries into a common shape for aggregation. Pass a
   // route to scope to just that route's entries; omit it for every route.
   function getLogbookEntriesForScope(scopeRoute) {
@@ -3379,15 +3421,25 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   function showDayPopover(dateStr, entries) {
     document.getElementById('calendar-day-popover-date').textContent = formatCalendarPopoverDate(dateStr);
     const list = document.getElementById('calendar-day-popover-list');
-    list.innerHTML = entries.map(e => `
-      <div class="calendar-day-popover-entry" data-route-id="${e.routeId}">
+    // Manual (trackless) entries have no route to jump to — render them as a
+    // non-interactive row instead of a clickable one.
+    list.innerHTML = entries.map(e => {
+      const isManual = e.distanceKm != null || e.elevationM != null;
+      // Manual entries all live on the generic "Other" pseudo-route — show the
+      // activity that was actually done instead of that placeholder name.
+      const displayName = isManual
+        ? `${getActivityEmoji(e.activity)} ${getActivityName(e.activity) || 'Activity'}`
+        : (e.routeName || 'Untitled route');
+      return `
+      <div class="calendar-day-popover-entry${isManual ? ' is-static' : ''}" data-route-id="${e.routeId}">
         <div class="logbook-entry-header">
-          <span class="calendar-day-popover-entry-name">${escapeHtml(e.routeName || 'Untitled route')}</span>
+          <span class="calendar-day-popover-entry-name">${escapeHtml(displayName)}</span>
           <span class="logbook-entry-label logbook-entry-label--${e.label}">${escapeHtml(LOGBOOK_LABELS[e.label].text)}</span>
         </div>
         ${e.notes ? `<p class="calendar-day-popover-entry-notes">${escapeHtml(truncateNotes(e.notes))}</p>` : ''}
-      </div>`).join('');
-    list.querySelectorAll('.calendar-day-popover-entry').forEach(el => {
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.calendar-day-popover-entry:not(.is-static)').forEach(el => {
       el.addEventListener('click', () => jumpToRoute(el.dataset.routeId));
     });
     document.getElementById('calendar-day-popover').style.display = 'block';
@@ -3421,6 +3473,205 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       li = document.querySelector(`.route-item[data-id="${route.id}"]`);
     }
     if (li) loadRoute(route, li);
+  }
+
+  // ── Manual (trackless) activities ─────────────────────────────────────────────
+  // Logged directly (sport, date, distance, time, elevation) with no GPX track —
+  // e.g. a ski resort day, a ride tracked on a smartwatch you don't want saved
+  // as a route. Stored as logbook entries on the synthetic "Other" route.
+
+  function populateManualActivitySelect() {
+    const select = document.getElementById('manual-activity-select');
+    if (!select || select.childElementCount) return; // build once
+    Object.entries(CATEGORIES).forEach(([catKey, cat]) => {
+      const group = document.createElement('optgroup');
+      group.label = `${cat.emoji} ${cat.name}`;
+      Object.entries(ACTIVITIES)
+        .filter(([, a]) => a.category === catKey)
+        .forEach(([key, a]) => {
+          const opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = `${a.emoji} ${a.name}`;
+          group.appendChild(opt);
+        });
+      select.appendChild(group);
+    });
+  }
+
+  function openManualActivityModal() {
+    document.getElementById('manual-activity-select').value = Object.keys(ACTIVITIES)[0] || '';
+    document.getElementById('manual-activity-date-input').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('manual-activity-duration-input').value = '';
+    document.getElementById('manual-activity-distance-input').value = '';
+    document.getElementById('manual-activity-elevation-input').value = '';
+    document.getElementById('manual-activity-error').textContent = '';
+    const addBtn = document.getElementById('manual-activity-add-btn');
+    delete addBtn.dataset.editingId;
+    addBtn.textContent = 'Add activity';
+    renderManualActivityList();
+    document.getElementById('manual-activity-modal').style.display = 'flex';
+  }
+
+  function closeManualActivityModal() {
+    document.getElementById('manual-activity-modal').style.display = 'none';
+  }
+
+  const MANUAL_ACTIVITY_MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Entries are grouped by year, then by month within each year — so the
+  // list stays navigable indefinitely: only the current year's months are
+  // ever listed openly, every other year collapses to a single header row
+  // no matter how many years of history pile up. Flat month-only grouping
+  // would have the same unbounded-list problem again after a couple of years.
+  function renderManualActivityList() {
+    const list = document.getElementById('manual-activity-list');
+    const otherRoute = findOtherRoute();
+    const entries = otherRoute ? [...getRouteLogbook(otherRoute)].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)) : [];
+
+    if (!entries.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No other activities logged yet.</p>';
+      return;
+    }
+
+    const years = []; // [{ key: 'YYYY', entries: [], months: [{ key, label, entries }] }], newest first
+    entries.forEach(e => {
+      const yearKey  = (e.date || '').slice(0, 4) || 'Undated';
+      const monthKey = (e.date || '').slice(0, 7) || 'Undated';
+      let year = years.find(y => y.key === yearKey);
+      if (!year) { year = { key: yearKey, entries: [], months: [] }; years.push(year); }
+      year.entries.push(e);
+      let month = year.months.find(m => m.key === monthKey);
+      if (!month) {
+        const [, m] = monthKey.split('-').map(Number);
+        const label = m ? MANUAL_ACTIVITY_MONTH_NAMES[m - 1] : 'Undated';
+        month = { key: monthKey, label, entries: [] };
+        year.months.push(month);
+      }
+      month.entries.push(e);
+    });
+
+    const entryHtml = e => {
+      const emoji = getActivityEmoji(e.activity);
+      const name  = getActivityName(e.activity) || 'Activity';
+      const dist  = e.distanceKm ? fmtDist(e.distanceKm) : null;
+      const elev  = e.elevationM ? fmtElev(e.elevationM) : null;
+      const dur   = e.durationSec ? GPXParser.formatDuration(e.durationSec) : null;
+      const summary = [dist, elev ? `+${elev}` : null, dur].filter(Boolean).join(' · ');
+      return `
+      <div class="logbook-entry" data-id="${e.id}">
+        <div class="logbook-entry-header">
+          <span class="logbook-entry-date">${escapeHtml(e.date)}</span>
+          <span class="logbook-entry-actions">
+            <button class="logbook-entry-edit" data-id="${e.id}" title="Edit">✎</button>
+            <button class="logbook-entry-remove" data-id="${e.id}" title="Delete">${SVG_TRASH}</button>
+          </span>
+        </div>
+        <p class="logbook-entry-notes">${emoji} ${escapeHtml(name)}${summary ? ' — ' + escapeHtml(summary) : ''}</p>
+      </div>`;
+    };
+
+    list.innerHTML = years.map((year, yi) => `
+      <div class="manual-activity-year-group${yi === 0 ? '' : ' collapsed'}" data-key="${escapeHtml(year.key)}">
+        <div class="manual-activity-year-header">
+          <span class="manual-activity-month-chevron">▾</span>
+          <span class="manual-activity-month-label">${escapeHtml(year.key)}</span>
+          <span class="manual-activity-month-count">${year.entries.length}</span>
+        </div>
+        <div class="manual-activity-year-months">
+          ${year.months.map((month, mi) => `
+            <div class="manual-activity-month-group${mi === 0 ? '' : ' collapsed'}" data-key="${escapeHtml(month.key)}">
+              <div class="manual-activity-month-header">
+                <span class="manual-activity-month-chevron">▾</span>
+                <span class="manual-activity-month-label">${escapeHtml(month.label)}</span>
+                <span class="manual-activity-month-count">${month.entries.length}</span>
+              </div>
+              <div class="manual-activity-month-entries">
+                ${month.entries.map(entryHtml).join('')}
+              </div>
+            </div>`).join('')}
+        </div>
+      </div>`).join('');
+
+    list.querySelectorAll('.manual-activity-year-header').forEach(header => {
+      header.addEventListener('click', () => header.closest('.manual-activity-year-group').classList.toggle('collapsed'));
+    });
+    list.querySelectorAll('.manual-activity-month-header').forEach(header => {
+      header.addEventListener('click', e => {
+        e.stopPropagation();
+        header.closest('.manual-activity-month-group').classList.toggle('collapsed');
+      });
+    });
+    list.querySelectorAll('.logbook-entry-remove').forEach(btn => {
+      armDeleteBtn(btn, () => {
+        removeLogbookEntry(otherRoute.id, Number(btn.dataset.id));
+        renderManualActivityList();
+      });
+    });
+    list.querySelectorAll('.logbook-entry-edit').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const id = Number(btn.dataset.id);
+        const entry = entries.find(e => e.id === id);
+        if (!entry) return;
+        document.getElementById('manual-activity-select').value = entry.activity || '';
+        document.getElementById('manual-activity-date-input').value = entry.date;
+        document.getElementById('manual-activity-duration-input').value = entry.durationSec ? fmtDurationForEdit(entry.durationSec) : '';
+        document.getElementById('manual-activity-distance-input').value = entry.distanceKm || '';
+        document.getElementById('manual-activity-elevation-input').value = entry.elevationM || '';
+        const addBtn = document.getElementById('manual-activity-add-btn');
+        addBtn.dataset.editingId = id;
+        addBtn.textContent = 'Save changes';
+      });
+    });
+  }
+
+  async function handleManualActivitySave() {
+    const btn      = document.getElementById('manual-activity-add-btn');
+    const errorEl   = document.getElementById('manual-activity-error');
+    const activity  = document.getElementById('manual-activity-select').value;
+    const date      = document.getElementById('manual-activity-date-input').value;
+    const rawDuration = document.getElementById('manual-activity-duration-input').value.trim();
+    const rawDistance = document.getElementById('manual-activity-distance-input').value.trim();
+    const rawElevation = document.getElementById('manual-activity-elevation-input').value.trim();
+
+    if (!date) { errorEl.textContent = 'Date is required.'; return; }
+
+    // Duration is the only source of truth here — there's no track to fall
+    // back on — so it's mandatory, same rule as a regular Done entry.
+    const durationSec = rawDuration ? parseDurationInput(rawDuration) : null;
+    if (!durationSec) {
+      errorEl.textContent = rawDuration
+        ? 'Could not understand that duration — try "3:24", "3h24m", or "204" (minutes).'
+        : 'Activity duration is required.';
+      return;
+    }
+
+    const distanceKm = rawDistance ? parseFloat(rawDistance) : 0;
+    const elevationM = rawElevation ? parseFloat(rawElevation) : 0;
+    if (rawDistance && (isNaN(distanceKm) || distanceKm < 0)) { errorEl.textContent = 'Distance must be a positive number.'; return; }
+    if (rawElevation && (isNaN(elevationM) || elevationM < 0)) { errorEl.textContent = 'Elevation gain must be a positive number.'; return; }
+    errorEl.textContent = '';
+
+    const otherRoute = await getOrCreateOtherRoute();
+    const editingId = btn.dataset.editingId ? Number(btn.dataset.editingId) : null;
+    if (editingId) {
+      updateLogbookEntry(otherRoute.id, editingId, { date, activity, durationSec, distanceKm, elevationM });
+      delete btn.dataset.editingId;
+      btn.textContent = 'Add activity';
+    } else {
+      const entries = getRouteLogbook(otherRoute).slice();
+      entries.push({ id: Date.now(), date, notes: '', label: 'done', activity, durationSec, distanceKm, elevationM, createdAt: new Date().toISOString() });
+      saveRouteLogbook(otherRoute.id, entries);
+    }
+
+    document.getElementById('manual-activity-date-input').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('manual-activity-duration-input').value = '';
+    document.getElementById('manual-activity-distance-input').value = '';
+    document.getElementById('manual-activity-elevation-input').value = '';
+    renderManualActivityList();
+    refreshStatsModal();
+    showShareToast(editingId ? 'Activity updated.' : 'Activity added.');
   }
 
   // ── Overdue Planned route check-in ────────────────────────────────────────────
@@ -3520,7 +3771,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       doneCount++;
       const route = savedRoutes.find(r => r.id === e.routeId) || uploadedRoutes.find(r => r.id === e.routeId);
       if (!route) { skippedCount++; return; }
-      const stats = getRouteSearchStats(route);
+      const stats = getEntryContribution(e, route);
       if (!stats) { skippedCount++; return; }
 
       totalDistanceKm  += stats.distance;
@@ -3530,13 +3781,17 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       const durationSec = e.durationSec != null ? e.durationSec : stats.durationSec;
       if (durationSec != null) totalDurationSec += durationSec;
 
-      const catKey = getActivityCategory(route.activity) || 'unknown';
+      const catKey = getActivityCategory(e.activity || route.activity) || 'unknown';
       const a = byActivity[catKey] || (byActivity[catKey] = { distanceKm: 0, count: 0 });
       a.distanceKm += stats.distance;
       a.count++;
 
-      const r = byRoute[route.id] || (byRoute[route.id] = { routeName: route.name, count: 0 });
-      r.count++;
+      // The synthetic "Other" route isn't a real, repeatable route — keep it
+      // out of the "Top 10 most repeated routes" list entirely.
+      if (!route.isOtherRoute) {
+        const r = byRoute[route.id] || (byRoute[route.id] = { routeName: route.name, count: 0 });
+        r.count++;
+      }
     });
 
     return { totalDistanceKm, totalElevationM, totalDurationSec, doneCount, skippedCount, byActivity, byRoute };
@@ -3563,9 +3818,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       const key = bucketKeyFor(e.date);
       const b = buckets[key] || (buckets[key] = { byCategory: {} });
       const route = savedRoutes.find(r => r.id === e.routeId) || uploadedRoutes.find(r => r.id === e.routeId);
-      const stats = route ? getRouteSearchStats(route) : null;
+      const stats = route ? getEntryContribution(e, route) : null;
       if (stats) {
-        const catKey = getActivityCategory(route.activity) || 'unknown';
+        const catKey = getActivityCategory(e.activity || route.activity) || 'unknown';
         b.byCategory[catKey] = (b.byCategory[catKey] || 0) + stats.distance;
       }
     });
@@ -5997,6 +6252,21 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     });
   }
 
+  // ── Manual activity modal wiring ──────────────────────────────────────────────
+
+  function setupManualActivityModal() {
+    const btn = document.getElementById('stats-log-manual-btn');
+    if (!btn) return;
+    populateManualActivitySelect();
+    btn.addEventListener('click', () => { closeStatsModal(); openManualActivityModal(); });
+
+    document.getElementById('manual-activity-close').addEventListener('click', closeManualActivityModal);
+    document.getElementById('manual-activity-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeManualActivityModal();
+    });
+    document.getElementById('manual-activity-add-btn').addEventListener('click', handleManualActivitySave);
+  }
+
   // ── Sidebar drag-to-resize ────────────────────────────────────────────────────
 
   function setupSidebarResize() {
@@ -6364,6 +6634,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     setupTheme();
     setupCalendarButton();
     setupStatsButton();
+    setupManualActivityModal();
     setupPlannedCheckinModal();
 
     // Track Creator
