@@ -869,8 +869,13 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
 .place-popup { font-size: 13px; }
 .place-popup p { margin: 4px 0 0; color: var(--text-muted); }
 
-/* Add-place mode hint strip */
-#place-add-hint {
+/* GPX waypoint (key point) markers on the map */
+.waypoint-popup { font-size: 13px; }
+.waypoint-popup small { display: block; color: var(--text-muted); margin-top: 2px; }
+.waypoint-popup p { margin: 4px 0 0; color: var(--text-muted); }
+
+/* Add-place / add-waypoint mode hint strip */
+#place-add-hint, #waypoint-add-hint {
   position: absolute;
   top: 10px;
   left: 50%;
@@ -886,7 +891,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   font-size: 13px;
   color: var(--text);
 }
-#place-add-cancel {
+#place-add-cancel, #waypoint-add-cancel {
   background: none;
   border: none;
   color: var(--primary);
@@ -1629,6 +1634,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   position: relative;
   width: 100%;
 }
+
 
 /* Gradient section inspector — shown after clicking a chart section */
 #gradient-section-info {
@@ -2737,6 +2743,7 @@ body.is-col-resizing #sidebar-resize-handle::after { background: var(--primary);
   border-radius: 10px;
   font-weight: 500;
   letter-spacing: 0.01em;
+  cursor: pointer;
 }
 .backup-status.ok      { color: #16a34a; background: rgba(22,163,74,0.12); }
 .backup-status.pending { color: #64748b; background: rgba(100,116,139,0.12); }
