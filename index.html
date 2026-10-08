@@ -154,6 +154,12 @@
           <button id="place-add-cancel" type="button">Cancel</button>
         </div>
 
+        <!-- Add-waypoint mode hint (visible while placing a waypoint on the active route) -->
+        <div id="waypoint-add-hint" style="display:none">
+          Click the map to place a waypoint
+          <button id="waypoint-add-cancel" type="button">Cancel</button>
+        </div>
+
         <!-- Piste difficulty legend (visible when ski overlay is active) -->
         <div id="piste-legend" style="display:none">
           <div class="piste-legend-title">Piste difficulty</div>
@@ -274,6 +280,10 @@
               </button>
               <button id="btn-reverse-route" class="btn-share-route" title="Reverse route direction" aria-label="Reverse route direction">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+              </button>
+              <button id="btn-waypoints-route" class="btn-share-route" title="Waypoints" aria-label="Waypoints">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.2"/></svg>
+                <span id="waypoints-badge" class="logbook-badge" hidden></span>
               </button>
               <button id="btn-logbook-route" class="btn-share-route" title="Logbook" aria-label="Logbook">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="13" height="13"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
@@ -540,6 +550,7 @@
     </div>
     <p class="share-dialog-hint">Your library will be automatically saved as <code>gpx-library.json</code> in a private GitHub repository, 30 seconds after any change.</p>
     <p class="share-dialog-hint">Your token needs the <code>repo</code> scope (in addition to <code>gist</code> for sharing). Leave the field empty to disable backup.</p>
+    <p id="backup-last-error" class="pat-error" style="display:none"></p>
     <label class="pat-input-row">
       <span class="pat-field-label">Repository</span>
       <input type="text" id="backup-repo-input" class="share-url-input pat-token-input" placeholder="username/repo-name" autocomplete="off" spellcheck="false" />
@@ -666,6 +677,35 @@
     </div>
 
     <p class="pat-privacy-note">Places and categories are stored only in this browser (and included in your library backup/export).</p>
+  </div>
+</div>
+
+<!-- ── Waypoints Modal ──────────────────────────────────────────────────── -->
+<div id="waypoints-modal" class="share-overlay" style="display:none" role="dialog" aria-modal="true" aria-labelledby="waypoints-modal-title">
+  <div class="share-dialog places-dialog">
+    <div class="share-dialog-header">
+      <h3 id="waypoints-modal-title">Waypoints</h3>
+      <button id="waypoints-modal-close" class="share-close-btn" title="Close" aria-label="Close">✕</button>
+    </div>
+    <p class="share-dialog-hint">Key points on this route — parking, rappel stations, huts, etc.</p>
+
+    <div id="waypoints-list" class="privacy-zones-list"></div>
+
+    <div class="privacy-options-row">
+      <button id="waypoints-pick-btn" class="privacy-option-btn">📍 Click on map</button>
+    </div>
+
+    <div id="waypoint-pending" class="privacy-pending-zone" style="display:none">
+      <div class="privacy-pending-header">
+        <span class="privacy-location-icon">📍</span>
+        <span id="waypoint-pending-coords" class="privacy-pending-name"></span>
+      </div>
+      <input type="text" id="waypoint-name-input" class="share-url-input" placeholder="Name (e.g. R3 16m)" autocomplete="off" spellcheck="false" />
+      <textarea id="waypoint-notes-input" class="share-url-input places-notes-textarea" placeholder="Notes (optional)" rows="2"></textarea>
+      <button id="waypoint-save-btn" class="share-copy-btn privacy-add-btn">Save waypoint</button>
+    </div>
+
+    <p id="waypoints-error" class="pat-error"></p>
   </div>
 </div>
 
