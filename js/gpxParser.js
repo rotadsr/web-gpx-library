@@ -70,7 +70,43 @@ const GPXParser = (() => {
 
     const stats = computeStats(points);
 
-    return { metadata, points, stats };
+    // --- Waypoints (named key points: parking, rappel stations, huts, etc.) ---
+    const wptEls = Array.from(
+      doc.getElementsByTagNameNS(ns, 'wpt').length
+        ? doc.getElementsByTagNameNS(ns, 'wpt')
+        : doc.getElementsByTagName('wpt')
+    );
+
+    const waypoints = wptEls.map(el => {
+      const eleEl = el.getElementsByTagNameNS(ns, 'ele')[0]
+                 || el.getElementsByTagName('ele')[0];
+      return {
+        lat:  parseFloat(el.getAttribute('lat')),
+        lon:  parseFloat(el.getAttribute('lon')),
+        ele:  eleEl ? parseFloat(eleEl.textContent) : null,
+        name: getText(el, 'name'),
+        desc: getText(el, 'desc') || getText(el, 'cmt'),
+      };
+    }).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+
+    // Snap each waypoint to its nearest track point so it can be plotted on
+    // the elevation profile (distance along track) even though <wpt> entries
+    // carry no distance info of their own; also backfills missing elevation.
+    if (points.length && waypoints.length) {
+      waypoints.forEach(wp => {
+        let bestIdx = 0, bestD = Infinity;
+        for (let i = 0; i < points.length; i++) {
+          const dLat = points[i].lat - wp.lat;
+          const dLon = points[i].lon - wp.lon;
+          const d = dLat * dLat + dLon * dLon;
+          if (d < bestD) { bestD = d; bestIdx = i; }
+        }
+        wp.distKm = stats.cumulativeDistances[bestIdx] || 0;
+        if (wp.ele === null) wp.ele = points[bestIdx].ele;
+      });
+    }
+
+    return { metadata, points, stats, waypoints };
   }
 
   // Haversine distance in km between two lat/lon pairs

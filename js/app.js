@@ -16,6 +16,7 @@
   let searchQuery     = '';
   let elevationChart  = null;
   let currentPoints   = [];
+  let currentWaypoints = [];
   let activeRouteId   = null;
   let currentGpxText  = null;
   let sharedRouteRef  = null;  // route object loaded from a ?gist= share URL
@@ -81,6 +82,11 @@
   let editingPlaceId            = null; // place being edited via the composer, or null
   let placesVisible = localStorage.getItem('gpxlib-places-visible') !== 'false'; // default: visible
 
+  // Waypoints (route-scoped key points) — add/edit mode state
+  let waypointAddModeActive = false;
+  let editingWaypointIndex  = null; // index into currentWaypoints being edited via the composer, or null
+  let waypointPending       = null; // { lat, lon, ele, name, desc } staged in the composer
+
   function setPlacesVisible(visible) {
     placesVisible = visible;
     localStorage.setItem('gpxlib-places-visible', String(visible));
@@ -115,6 +121,7 @@
   // Chart view mode
   let chartMode        = 'elevation'; // 'elevation' | 'gradient'
   let chartSegmentData = null;        // { profile, sections, sectionGradientAt, dFactor, eFactor } for plugin/click
+  let chartWaypointData = [];         // [{ x: dist, y: ele, name }] for the waypointDots plugin
   let chartClickHandler = null;       // current canvas click listener, torn down before each re-render
 
   // Weather state
@@ -656,6 +663,7 @@
   function enterTrackCreatorMode() {
     if (trackCreatorActive) return;
     if (placeAddModeActive) exitPlaceAddMode();
+    if (waypointAddModeActive) exitWaypointAddMode();
     trackCreatorActive = true;
 
     document.querySelectorAll('.route-item').forEach(el => el.classList.remove('active'));
@@ -896,6 +904,46 @@
       }
       timeEl.textContent = iso;
     }
+
+    return new XMLSerializer().serializeToString(doc);
+  }
+
+  // Replaces every top-level <wpt> in gpxText with the given waypoint list
+  // (each { lat, lon, ele, name, desc }). Used for add/edit/remove alike —
+  // callers always pass the full desired list and this reserializes once.
+  function patchGpxWaypoints(gpxText, waypoints) {
+    if (!gpxText) return gpxText;
+    const doc  = new DOMParser().parseFromString(gpxText, 'text/xml');
+    const root = doc.documentElement;
+    const ns   = root.namespaceURI || '';
+
+    Array.from(root.children)
+      .filter(child => child.localName === 'wpt')
+      .forEach(el => root.removeChild(el));
+
+    const trkEl = Array.from(root.children).find(child => child.localName === 'trk') || null;
+
+    waypoints.forEach(wp => {
+      const el = ns ? doc.createElementNS(ns, 'wpt') : doc.createElement('wpt');
+      el.setAttribute('lat', wp.lat);
+      el.setAttribute('lon', wp.lon);
+      if (wp.ele !== null && wp.ele !== undefined) {
+        const eleEl = ns ? doc.createElementNS(ns, 'ele') : doc.createElement('ele');
+        eleEl.textContent = wp.ele;
+        el.appendChild(eleEl);
+      }
+      if (wp.name) {
+        const nameEl = ns ? doc.createElementNS(ns, 'name') : doc.createElement('name');
+        nameEl.textContent = wp.name;
+        el.appendChild(nameEl);
+      }
+      if (wp.desc) {
+        const descEl = ns ? doc.createElementNS(ns, 'desc') : doc.createElement('desc');
+        descEl.textContent = wp.desc;
+        el.appendChild(descEl);
+      }
+      root.insertBefore(el, trkEl); // GPX schema requires wpt/rte before trk
+    });
 
     return new XMLSerializer().serializeToString(doc);
   }
@@ -2084,7 +2132,7 @@
     hideOverviewTooltip();
 
     if (currentPoints.length >= 2) {
-      MapManager.showRoute(currentPoints, currentStats);
+      MapManager.showRoute(currentPoints, currentStats, currentWaypoints);
     } else if (!activeRouteId) {
       document.getElementById('route-view').classList.add('no-route-active');
       MapManager.invalidateMapSize();
@@ -2847,6 +2895,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   function enterPlaceAddMode() {
     if (placeAddModeActive) return;
     if (trackCreatorActive) exitTrackCreatorMode();
+    if (waypointAddModeActive) exitWaypointAddMode();
     const queryBtn = document.getElementById('btn-query');
     if (queryBtn && queryBtn.classList.contains('active')) {
       queryBtn.classList.remove('active');
@@ -4523,8 +4572,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     const parsed   = GPXParser.parse(trimmedGpxText);
     currentPoints  = parsed.points;
+    currentWaypoints = parsed.waypoints;
     renderStats(parsed.metadata, parsed.stats);
-    MapManager.showRoute(parsed.points, parsed.stats);
+    MapManager.showRoute(parsed.points, parsed.stats, parsed.waypoints);
 
     backupNeeded = true;
     scheduleBackup();
@@ -4591,13 +4641,184 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     const parsed  = GPXParser.parse(reversed);
     currentPoints = parsed.points;
+    currentWaypoints = parsed.waypoints;
     renderStats(parsed.metadata, parsed.stats);
-    MapManager.showRoute(parsed.points, parsed.stats);
+    MapManager.showRoute(parsed.points, parsed.stats, parsed.waypoints);
     setReversedBadge(!!route.reversed);
 
     backupNeeded = true;
     scheduleBackup();
     showShareToast(route.reversed ? 'Route reversed.' : 'Route restored to original direction.');
+  }
+
+  // ── Waypoints (route-scoped key points: add / edit / remove) ───────────────────
+
+  // Applies the full desired waypoint list to the active route's GPX, re-parses,
+  // re-renders map + chart, and persists — used for add, edit, and remove alike.
+  async function applyWaypointChanges(newWaypoints) {
+    const route = savedRoutes.find(r => r.id === activeRouteId)
+                || uploadedRoutes.find(r => r.id === activeRouteId);
+    if (!route || !currentGpxText) return;
+
+    const patched  = patchGpxWaypoints(currentGpxText, newWaypoints);
+    route.gpxText  = patched;
+    route._parsed  = null;
+    currentGpxText = patched;
+
+    if (route.source === 'saved') {
+      try {
+        await Storage.saveRoute({ ...route });
+        const idx = savedRoutes.findIndex(r => r.id === activeRouteId);
+        if (idx >= 0) savedRoutes[idx] = route;
+        refreshLibraryDate();
+      } catch (err) {
+        showShareToast('Could not save: ' + err.message);
+        return;
+      }
+    } else {
+      const idx = uploadedRoutes.findIndex(r => r.id === activeRouteId);
+      if (idx >= 0) uploadedRoutes[idx] = route;
+    }
+
+    const parsed     = GPXParser.parse(patched);
+    currentPoints     = parsed.points;
+    currentWaypoints  = parsed.waypoints;
+    MapManager.showRoute(parsed.points, parsed.stats, parsed.waypoints);
+    renderElevationChart(parsed.points, parsed.stats, parsed.waypoints);
+    updateWaypointsBadge(route);
+
+    backupNeeded = true;
+    scheduleBackup();
+  }
+
+  function updateWaypointsBadge(route) {
+    const badge = document.getElementById('waypoints-badge');
+    if (!badge) return;
+    const count = currentWaypoints.length;
+    if (count > 0) {
+      badge.textContent = String(count);
+      badge.hidden = false;
+    } else {
+      badge.hidden = true;
+    }
+  }
+
+  function enterWaypointAddMode() {
+    if (waypointAddModeActive) return;
+    if (trackCreatorActive) exitTrackCreatorMode();
+    if (placeAddModeActive) exitPlaceAddMode();
+    const queryBtn = document.getElementById('btn-query');
+    if (queryBtn && queryBtn.classList.contains('active')) {
+      queryBtn.classList.remove('active');
+      MapManager.setQueryMode(false);
+    }
+    waypointAddModeActive = true;
+    document.getElementById('waypoints-modal').style.display = 'none';
+    document.getElementById('waypoint-add-hint').style.display = 'flex';
+    MapManager.setWaypointAddMode(true, (latlng) => handleWaypointMapClick(latlng));
+  }
+
+  function exitWaypointAddMode() {
+    if (!waypointAddModeActive) return;
+    waypointAddModeActive = false;
+    MapManager.setWaypointAddMode(false);
+    document.getElementById('waypoint-add-hint').style.display = 'none';
+  }
+
+  function handleWaypointMapClick(latlng) {
+    exitWaypointAddMode();
+    editingWaypointIndex = null;
+    waypointPending = { lat: latlng.lat, lon: latlng.lng, ele: null, name: '', desc: '' };
+    document.getElementById('waypoints-modal').style.display = 'flex';
+    showWaypointPending();
+  }
+
+  function openWaypointsModal() {
+    if (!activeRouteId || !currentGpxText) return;
+    waypointPending = null;
+    editingWaypointIndex = null;
+    document.getElementById('waypoints-error').textContent = '';
+    hideWaypointPending();
+    renderWaypointsList();
+    document.getElementById('waypoints-modal').style.display = 'flex';
+  }
+
+  function closeWaypointsModal() {
+    document.getElementById('waypoints-modal').style.display = 'none';
+    waypointPending = null;
+    editingWaypointIndex = null;
+  }
+
+  function renderWaypointsList() {
+    const list = document.getElementById('waypoints-list');
+    if (!currentWaypoints.length) {
+      list.innerHTML = '<p class="privacy-zones-empty">No waypoints on this route yet.</p>';
+      return;
+    }
+    list.innerHTML = currentWaypoints.map((wp, idx) => {
+      return `<div class="privacy-zone-item">
+        <span class="privacy-zone-icon">📍</span>
+        <span class="privacy-zone-name">${escapeHtml(wp.name || 'Unnamed waypoint')}</span>
+        <button class="privacy-zone-edit" data-idx="${idx}" title="Edit waypoint">✎</button>
+        <button class="privacy-zone-remove" data-idx="${idx}" title="Remove waypoint">✕</button>
+      </div>`;
+    }).join('');
+    list.querySelectorAll('.privacy-zone-remove').forEach(btn => {
+      armDeleteBtn(btn, () => {
+        const idx = Number(btn.dataset.idx);
+        const newWaypoints = currentWaypoints.filter((_, i) => i !== idx);
+        applyWaypointChanges(newWaypoints).then(() => {
+          renderWaypointsList();
+          showShareToast('Waypoint removed.');
+        });
+      });
+    });
+    list.querySelectorAll('.privacy-zone-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = Number(btn.dataset.idx);
+        const wp  = currentWaypoints[idx];
+        if (!wp) return;
+        editingWaypointIndex = idx;
+        waypointPending = { ...wp };
+        showWaypointPending();
+      });
+    });
+  }
+
+  function showWaypointPending() {
+    document.getElementById('waypoint-pending-coords').textContent =
+      `${waypointPending.lat.toFixed(5)}, ${waypointPending.lon.toFixed(5)}`;
+    document.getElementById('waypoint-name-input').value  = waypointPending.name  || '';
+    document.getElementById('waypoint-notes-input').value = waypointPending.desc || '';
+    document.getElementById('waypoint-save-btn').textContent = editingWaypointIndex !== null ? 'Save changes' : 'Save waypoint';
+    document.getElementById('waypoint-pending').style.display = 'flex';
+  }
+
+  function hideWaypointPending() {
+    document.getElementById('waypoint-pending').style.display = 'none';
+    waypointPending = null;
+    editingWaypointIndex = null;
+  }
+
+  function handleWaypointComposerSave() {
+    if (!waypointPending) return;
+    const name = document.getElementById('waypoint-name-input').value.trim();
+    const desc = document.getElementById('waypoint-notes-input').value.trim() || null;
+
+    const wasEditing = editingWaypointIndex !== null;
+    const newWaypoints = [...currentWaypoints];
+    const entry = { ...waypointPending, name, desc };
+    if (wasEditing) {
+      newWaypoints[editingWaypointIndex] = entry;
+    } else {
+      newWaypoints.push(entry);
+    }
+
+    applyWaypointChanges(newWaypoints).then(() => {
+      renderWaypointsList();
+      hideWaypointPending();
+      showShareToast(wasEditing ? 'Waypoint updated.' : 'Waypoint added.');
+    });
   }
 
   function openReverseConfirm() {
@@ -4997,7 +5218,15 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
   const BACKUP_REPO_KEY  = 'gpxlib-backup-repo';
   const BACKUP_LAST_KEY  = 'gpxlib-backup-last';
+  const BACKUP_ERROR_KEY = 'gpxlib-backup-last-error'; // JSON { message, at } of the most recent failure, cleared on success
   function getBackupRepo()     { return localStorage.getItem(BACKUP_REPO_KEY) || ''; }
+  function getLastBackupError() {
+    try { return JSON.parse(localStorage.getItem(BACKUP_ERROR_KEY) || 'null'); } catch (_) { return null; }
+  }
+  function setLastBackupError(message) {
+    if (message) localStorage.setItem(BACKUP_ERROR_KEY, JSON.stringify({ message, at: new Date().toISOString() }));
+    else localStorage.removeItem(BACKUP_ERROR_KEY);
+  }
   function setBackupRepo(repo) {
     if (repo) localStorage.setItem(BACKUP_REPO_KEY, repo.trim());
     else localStorage.removeItem(BACKUP_REPO_KEY);
@@ -5024,6 +5253,17 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     return btoa(binary);
   }
 
+  // Pulls the "message" field out of a failed GitHub API response, if present,
+  // so backup errors say *why* (e.g. "Payload too large") instead of just a status code.
+  async function _ghErrorDetail(resp) {
+    try {
+      const body = await resp.json();
+      return body && body.message ? body.message : resp.statusText || 'unknown error';
+    } catch (_) {
+      return resp.statusText || 'unknown error';
+    }
+  }
+
   async function pushLibraryBackup() {
     const repo = getBackupRepo();
     const pat  = getPat();
@@ -5044,7 +5284,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       if (getResp.ok) {
         sha = (await getResp.json()).sha;
       } else if (getResp.status !== 404) {
-        throw new Error('Could not check existing backup (' + getResp.status + ')');
+        throw new Error('Could not check existing backup (' + getResp.status + ': ' + await _ghErrorDetail(getResp) + ')');
       }
 
       const putBody = { message: 'GPX Library backup — ' + new Date().toISOString().slice(0, 10), content };
@@ -5052,17 +5292,20 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
       const putResp = await fetch(apiBase, { method: 'PUT', headers, body: JSON.stringify(putBody) });
       if (putResp.status === 401) { clearPat(); throw new Error('token_rejected'); }
-      if (!putResp.ok) throw new Error('Backup failed (' + putResp.status + ')');
+      if (!putResp.ok) throw new Error('Backup failed (' + putResp.status + ': ' + await _ghErrorDetail(putResp) + ')');
 
       lastBackupAt = new Date();
       localStorage.setItem(BACKUP_LAST_KEY, lastBackupAt.toISOString());
       backupNeeded = false;
+      setLastBackupError(null);
       updateBackupStatus('ok');
     } catch (err) {
       if (err.message === 'token_rejected') {
+        setLastBackupError('Token rejected — please re-enter your GitHub token.');
         showShareToast('Backup: token rejected — please re-enter your GitHub token.');
       } else {
         console.warn('GitHub backup failed:', err.message);
+        setLastBackupError(err.message);
         showShareToast('Auto-backup failed: ' + err.message);
       }
       updateBackupStatus('error');
@@ -5086,6 +5329,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const repo = getBackupRepo();
     if (!repo) { el.style.display = 'none'; return; }
     el.style.display = 'inline-flex';
+    el.title = '';
     if (state === 'ok') {
       el.textContent = '✓ Backed up ' + (lastBackupAt ? formatBackupAge(lastBackupAt) : '');
       el.className = 'backup-status ok';
@@ -5096,11 +5340,20 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       el.textContent = '↑ Backup in 30s…';
       el.className = 'backup-status pending';
     } else if (state === 'error') {
-      el.textContent = '⚠ Backup failed';
+      el.textContent = '⚠ Backup failed — click for details';
       el.className = 'backup-status error';
+      const lastErr = getLastBackupError();
+      if (lastErr) el.title = lastErr.message;
     } else if (state === 'idle') {
-      el.textContent = lastBackupAt ? '✓ Backed up ' + formatBackupAge(lastBackupAt) : '↑ Backup configured';
-      el.className = 'backup-status ok';
+      const lastErr = getLastBackupError();
+      if (lastErr) {
+        el.textContent = '⚠ Last backup failed — click for details';
+        el.className = 'backup-status error';
+        el.title = lastErr.message;
+      } else {
+        el.textContent = lastBackupAt ? '✓ Backed up ' + formatBackupAge(lastBackupAt) : '↑ Backup configured';
+        el.className = 'backup-status ok';
+      }
     }
   }
 
@@ -5108,6 +5361,16 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     document.getElementById('backup-repo-input').value = getBackupRepo();
     document.getElementById('backup-pat-input').value  = getPat() || '';
     document.getElementById('backup-error').textContent = '';
+
+    const lastErrEl = document.getElementById('backup-last-error');
+    const lastErr    = getLastBackupError();
+    if (lastErr) {
+      lastErrEl.textContent = 'Last backup failed (' + new Date(lastErr.at).toLocaleString() + '): ' + lastErr.message;
+      lastErrEl.style.display = 'block';
+    } else {
+      lastErrEl.style.display = 'none';
+    }
+
     const saveBtn = document.getElementById('backup-save-btn');
     saveBtn.disabled = false;
     saveBtn.textContent = 'Save';
@@ -5187,6 +5450,8 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
   async function loadRoute(route, listItem) {
     if (trackCreatorActive) exitTrackCreatorMode();
+    if (waypointAddModeActive) exitWaypointAddMode();
+    if (document.getElementById('waypoints-modal').style.display === 'flex') closeWaypointsModal();
 
     // Second click on the already-active route → show all routes in overview
     if (route.id === activeRouteId && !overviewMode) {
@@ -5220,6 +5485,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       currentGpxText = xmlText;
       const parsed = route._parsed || (route._parsed = GPXParser.parse(xmlText));
       currentPoints = parsed.points;
+      currentWaypoints = parsed.waypoints;
 
       if (!route.name && parsed.metadata.name)
         document.getElementById('route-name').textContent = parsed.metadata.name;
@@ -5242,6 +5508,9 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       // Logbook button state/badge
       updateLogbookBadge(route);
 
+      // Waypoints button badge
+      updateWaypointsBadge(route);
+
       // Geocode centroid for location search (lazy, rate-limited)
       if (parsed.points.length) {
         const cLat = parsed.points.reduce((s, p) => s + p.lat, 0) / parsed.points.length;
@@ -5260,8 +5529,8 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         if (ovBtn) { ovBtn.classList.remove('is-active'); ovBtn.title = 'Show all routes on map'; }
         MapManager.invalidateMapSize();
       }
-      MapManager.showRoute(parsed.points, parsed.stats);
-      renderElevationChart(parsed.points, parsed.stats);
+      MapManager.showRoute(parsed.points, parsed.stats, parsed.waypoints);
+      renderElevationChart(parsed.points, parsed.stats, parsed.waypoints);
       loadWeatherForecast(parsed.points);
 
       // On mobile: close the sidebar and collapse the bottom sheet to peek mode
@@ -5429,6 +5698,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       route._parsed    = parsed;
       currentStats     = parsed.stats;
       currentPoints    = parsed.points;
+      currentWaypoints = parsed.waypoints;
       overrideDuration = null;
 
       if (route.source === 'saved') {
@@ -5641,7 +5911,38 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     },
   });
 
-  function renderElevationChart(points, stats) {
+  // Chart.js plugin — draws waypoint (key point) markers as dots, matching
+  // the style of the map-hover cursor dot but in a distinct color.
+  Chart.register({
+    id: 'waypointDots',
+    afterDatasetsDraw(chart) {
+      if (!chartWaypointData.length) return;
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+      const yScale = scales.y;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(chartArea.left, chartArea.top, chartArea.width, chartArea.height);
+      ctx.clip();
+
+      chartWaypointData.forEach(wp => {
+        const x = xScale.getPixelForValue(wp.x);
+        const y = yScale.getPixelForValue(wp.y);
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = '#a855f7';
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#fff';
+        ctx.stroke();
+      });
+
+      ctx.restore();
+    },
+  });
+
+  function renderElevationChart(points, stats, waypoints) {
     const profile = GPXParser.buildElevationProfile(points, stats);
     if (!profile.length) {
       document.getElementById('chart-container').style.display = 'none';
@@ -5688,6 +5989,17 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       return closest;
     });
 
+    // Waypoint markers drawn via the waypointDots plugin below (not a Chart.js
+    // dataset — their count rarely matches the profile's downsampled point
+    // count, which would break index-based hover/tooltip matching).
+    chartWaypointData = (waypoints || [])
+      .filter(wp => wp.distKm !== undefined && wp.ele !== null)
+      .map(wp => ({
+        x: parseFloat((wp.distKm * dFactor).toFixed(2)),
+        y: Math.round(wp.ele * eFactor),
+        name: wp.name || 'Waypoint',
+      }));
+
     elevationChart = new Chart(ctx, {
       type: 'line',
       data: {
@@ -5720,6 +6032,12 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
                 const sign  = g >= 0 ? '+' : '';
                 const arrow = g >  1 ? ' ↑' : g < -1 ? ' ↓' : ' →';
                 return `${sign}${g.toFixed(1)}% avg${arrow}`;
+              },
+              afterBody: items => {
+                if (!chartWaypointData.length || !items.length) return null;
+                const dist = items[0].label; // x value as a string, e.g. "0.45"
+                const near = chartWaypointData.find(wp => Math.abs(wp.x - parseFloat(dist)) < (maxDist / 80 || 0.01));
+                return near ? `📍 ${near.name}` : null;
               },
             },
             backgroundColor: 'rgba(15,23,42,0.85)',
@@ -6682,7 +7000,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
         document.querySelectorAll('.chart-mode-btn').forEach(b =>
           b.classList.toggle('is-active', b.dataset.mode === chartMode)
         );
-        if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats);
+        if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats, currentWaypoints);
       });
     });
 
@@ -6694,7 +7012,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
           b.classList.toggle('is-active', b.dataset.unit === units)
         );
         updateStatDisplay();
-        if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats);
+        if (currentPoints.length && currentStats) renderElevationChart(currentPoints, currentStats, currentWaypoints);
         if (currentWeatherData) renderWeatherDays(currentWeatherData.daily);
         renderSearchFilterChips(parseNumericFilters(searchQuery).filters);
       });
@@ -6770,6 +7088,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     });
 
     // Backup modal
+    document.getElementById('backup-status').addEventListener('click', openBackupModal);
     document.getElementById('backup-modal-close').addEventListener('click', closeBackupModal);
     document.getElementById('backup-modal').addEventListener('click', e => {
       if (e.target === e.currentTarget) closeBackupModal();
@@ -6841,6 +7160,16 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     // Reverse route button (flip track direction, overwrite)
     document.getElementById('btn-reverse-route').addEventListener('click', openReverseConfirm);
+
+    // Waypoints modal
+    document.getElementById('btn-waypoints-route').addEventListener('click', openWaypointsModal);
+    document.getElementById('waypoints-modal-close').addEventListener('click', closeWaypointsModal);
+    document.getElementById('waypoints-modal').addEventListener('click', e => {
+      if (e.target === e.currentTarget) closeWaypointsModal();
+    });
+    document.getElementById('waypoints-pick-btn').addEventListener('click', enterWaypointAddMode);
+    document.getElementById('waypoint-save-btn').addEventListener('click', handleWaypointComposerSave);
+    document.getElementById('waypoint-add-cancel').addEventListener('click', exitWaypointAddMode);
 
     // Logbook modal
     document.getElementById('btn-logbook-route').addEventListener('click', openLogbookModal);
@@ -6963,6 +7292,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       const active = queryBtn.classList.toggle('active');
       if (active && trackCreatorActive) exitTrackCreatorMode();
       if (active && placeAddModeActive) exitPlaceAddMode();
+      if (active && waypointAddModeActive) exitWaypointAddMode();
       MapManager.setQueryMode(active);
     });
 

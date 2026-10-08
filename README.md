@@ -11,6 +11,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Interactive map with multiple tile layers — Street Map, Topographic (OpenTopoMap), Satellite & Esri Topo, Cycling (CyclOSM), Humanitarian, and Esri Light Gray Canvas (default) / Dark Gray Canvas
 - **Slope angle overlays** — colour-coded avalanche-risk slope shading for backcountry planning, covering the Alps (OpenSlopeMap) and the Pyrenees (ATES Maps WMS); layered automatically over a basemap outside their coverage area
 - Route track display with start (🟢) and end (🔴) point markers
+- **Waypoints (key points)** — named points along a route (parking, rappel/belay stations, huts, viewpoints, etc.) parsed from the GPX file's `<wpt>` entries, shown as violet dot markers on the map with name/elevation popups
 - Real-time elevation cursor on the map
 - **3D terrain view** — real elevation extrusion powered by MapLibre GL JS; route colour-coded blue→red by altitude; elevation profile cursor synced to both 2D and 3D maps
 - **Ski resort piste overlay** — colour-coded run difficulty (🟢 beginner → 🔵 easy → 🔴 intermediate → ⚫ advanced, dashed lifts) loaded automatically for 35 resorts across the Alps, Andorra, and Spain
@@ -27,6 +28,13 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Category filter** — show only one category at a time from the Places panel, with a live count per category
 - **Manage places** — a dedicated modal lists every saved place with inline edit and delete
 - Places are stored in the browser (localStorage) and included in Export Library / GitHub auto-backup alongside your routes
+
+### 📍 Waypoints
+- **Add, edit, and remove key points on a route** — rappel/belay stations, parking, huts, viewpoints, or anything else worth marking along the track, directly from the route header
+- Shown as violet dot markers on the map (with name/elevation popups) and on the elevation profile chart (hover near one to see its name in the chart tooltip)
+- **Add by clicking the map** — opens the same click-to-place mode used by Places; the new waypoint is positioned exactly where you click
+- **Edit name and notes** inline from the Waypoints modal; position is set when added and isn't editable afterward — remove and re-add to relocate one
+- Unlike Places, waypoints belong to the route itself — they're read from and written back into the route's GPX data (the same `<wpt>` entries recognised when importing a GPX file with existing waypoints), so they travel with the route through Export Library, Share, and GitHub auto-backup
 
 ### 📓 Logbook
 - **Keep a journal per route** — log every time you did the route, with a date and free-text notes (e.g. "Better for summer, start 10AM–12PM to avoid the heat")
@@ -66,6 +74,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 🗺️ Overview Mode
 - **Show all routes** on the map at once with the "Show all" button
+- **Smart default view** — automatically frames whichever region holds the most of your routes (e.g. the Pyrenees, if that's where most of your library lives) instead of zooming out to fit every route worldwide; falls back to fitting everything if your routes aren't split into distinct regions
 - At zoom ≤ 9, routes automatically switch to a **density heatmap** — colour intensity shows where routes concentrate
 - **Route count bubbles** per zone show how many routes are in each area
 - Click a heatmap zone to zoom the map to fit that area
@@ -73,6 +82,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
+- **Waypoints on the elevation profile** — each route waypoint appears as a dot directly on the elevation line, at its true position along the track; hovering near one adds its name to the chart tooltip alongside distance, elevation, and gradient
 - **Gradient chart with section inspector** — switch to the Gradient tab to see the route colour-coded by climb/descent/flat sections (consecutive same-direction steps are merged into one averaged section, so a single climb reads as one clean band instead of dozens of noisy micro-gradients); click any section — uphill, downhill, or flat — to see its **Section** range, **Distance**, **Avg Gradient**, and **Elev. Range**
 - **Route statistics**: distance, duration, total gain, elevation range, max/min elevation, gradient, speed — duration and average speed are editable; editing one updates the other automatically
 - **Difficulty rating** — smart algorithm based on distance, elevation, and gradient
@@ -85,6 +95,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Export Library/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository. The export bundles routes, Places, custom Place categories, and per-route Logbook entries in a single file
 - **Bulk export GPX** — select any number of routes from the library and download each as an individual GPX file in one go
 - **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes); the backup includes Places and Logbook data alongside routes
+- **Backup failure visibility** — if a backup fails, the sidebar status pill shows the error (hover for the full message, e.g. a rejected token or a GitHub API error) and stays visible until the next successful backup, instead of only flashing a toast; click the pill to open Backup Settings and see the full error with its timestamp
 
 ### 🔍 Search & Filter
 - Full-text search across route names, descriptions, and tags
@@ -216,6 +227,13 @@ Two options are available under **"···"** → **Import** in the library heade
 5. Click **Manage places…** to see every saved place in one list, edit any of them (✎), or remove them (✕)
 6. To add your own category, open **Manage places…**, type an emoji and a name under **Custom categories**, then click **Add category**
 
+### Manage Waypoints
+1. Load any route, then click the **pin icon** in the route header to open the Waypoints modal
+2. Click **📍 Click on map**, then click a spot on the map — the modal reopens with the new waypoint pre-filled at that location
+3. Give it a **name** and optionally **notes**, then click **Save waypoint**
+4. Click the pencil (✎) next to any waypoint to edit its name/notes, or the ✕ to remove it (click again to confirm)
+5. A badge on the pin icon shows how many waypoints the route has at a glance
+
 ### Keep a Logbook
 1. Load a route that's already in **My Library** (session uploads must be saved first — see [Save to Library](#save-to-library))
 2. Click the **notebook icon** in the route header to open the Logbook
@@ -296,6 +314,7 @@ Two options are available under **"···"** → **Import** in the library heade
 - The sidebar shows a live status: **Backup in 30s…** → **Backing up…** → **✓ Backed up just now**
 - Use **"···"** → **Back up now** to trigger an immediate backup at any time
 - Leave the repository field empty and click Save to disable backup
+- If a backup fails, the status pill switches to **⚠ Backup failed** (or **⚠ Last backup failed** after it's no longer the newest attempt) and stays that way until the next success — hover it for the error, or click it to open Backup Settings and see the full message with its timestamp
 
 ### Search & Filter
 - Type in the search bar to filter by name, description, activity, location, or difficulty
