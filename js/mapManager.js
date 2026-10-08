@@ -13,6 +13,7 @@ const MapManager = (() => {
   let startMarker     = null;
   let endMarker       = null;
   let hoverMarker     = null;
+  let waypointMarkers = [];
   let locationMarker    = null;
   let locationCircle    = null;
   let queryMode         = false;
@@ -38,6 +39,8 @@ const MapManager = (() => {
   let _placeCategoryFilter   = null; // null = show all categories
   let placeAddMode           = false;
   let placeAddClickCb        = null;
+  let waypointAddMode        = false;
+  let waypointAddClickCb     = null;
 
   // ── Tile layer catalogue ────────────────────────────────────────────────────
   // All sources: free, open, no API key required.
@@ -216,11 +219,12 @@ const MapManager = (() => {
     const layer = LAYERS.find(l => l.id === currentLayerKey);
     currentTile = createTileLayer(layer).addTo(map);
 
-    // Query-mode / track-creator / place-add click handler
+    // Query-mode / track-creator / place-add / waypoint-add click handler
     map.on('click', e => {
       if (queryMode) handleQueryClick(e.latlng);
       if (trackCreatorMode && trackCreatorClickCb) trackCreatorClickCb(e.latlng);
       if (placeAddMode && placeAddClickCb) placeAddClickCb(e.latlng);
+      if (waypointAddMode && waypointAddClickCb) waypointAddClickCb(e.latlng);
     });
 
     if (_storedPrivacyZones.length) _renderPrivacyZones();
@@ -264,6 +268,13 @@ const MapManager = (() => {
     map.getContainer().style.cursor = enabled ? 'crosshair' : '';
   }
 
+  function setWaypointAddMode(enabled, onClick) {
+    waypointAddMode = enabled;
+    waypointAddClickCb = enabled ? onClick : null;
+    if (!map) return;
+    map.getContainer().style.cursor = enabled ? 'crosshair' : '';
+  }
+
   function updatePlaces(places, categoryFilter) {
     _storedPlaces = places || [];
     _placeCategoryFilter = categoryFilter || null;
@@ -303,7 +314,7 @@ const MapManager = (() => {
 
   // ── Route rendering ─────────────────────────────────────────────────────────
 
-  function showRoute(points, stats) {
+  function showRoute(points, stats, waypoints) {
     ensureMap();
     map.invalidateSize();
     clearRoute();
@@ -323,12 +334,38 @@ const MapManager = (() => {
     // Hover dot — added to map only when chart is hovered
     hoverMarker = L.circleMarker(latlngs[0], { ...dot('#f59e0b'), radius: 7, zIndexOffset: 500 });
 
+    _renderWaypoints(waypoints);
+
     if (_storedPrivacyZones.length) _renderPrivacyZones();
+  }
+
+  const WAYPOINT_COLOR = '#a855f7'; // violet — distinct from start(green)/end(red)/hover(amber)
+
+  function _renderWaypoints(waypoints) {
+    waypointMarkers.forEach(m => { try { m.remove(); } catch (_) {} });
+    waypointMarkers = [];
+    if (!waypoints || !waypoints.length) return;
+
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+    waypoints.forEach(wp => {
+      const marker = L.circleMarker([wp.lat, wp.lon], { ...dot(WAYPOINT_COLOR), radius: 7, zIndexOffset: 400 })
+        .addTo(map);
+
+      const title = esc(wp.name || 'Waypoint');
+      const ele   = wp.ele !== null && wp.ele !== undefined ? `<small>${Math.round(wp.ele)} m</small>` : '';
+      const desc  = wp.desc ? `<p>${esc(wp.desc)}</p>` : '';
+      marker.bindTooltip(title, { direction: 'top', offset: [0, -8] });
+      marker.bindPopup(`<div class="waypoint-popup"><strong>${title}</strong>${ele}${desc}</div>`);
+      waypointMarkers.push(marker);
+    });
   }
 
   function clearRoute() {
     [trackLine, startMarker, endMarker, hoverMarker].forEach(m => { if (m) m.remove(); });
     trackLine = startMarker = endMarker = hoverMarker = null;
+    waypointMarkers.forEach(m => { try { m.remove(); } catch (_) {} });
+    waypointMarkers = [];
   }
 
   // ── Track creator ────────────────────────────────────────────────────────────
@@ -614,6 +651,67 @@ const MapManager = (() => {
     }
   }
 
+  const CLUSTER_CELL_DEG = 4; // grid cell size (~400-450km) for regional clustering of the default overview camera
+
+  // Groups items into geographic clusters (grid cells, merged with their occupied
+  // 8-neighbor cells) and returns the bounds of whichever cluster holds the most
+  // routes — used to default the overview camera to wherever most of the library
+  // lives, instead of always framing the full (possibly worldwide) extent.
+  function _dominantClusterBounds(items) {
+    const withCentroid = items
+      .filter(it => it.latlngs && it.latlngs.length)
+      .map(it => {
+        const n = it.latlngs.length;
+        const lat = it.latlngs.reduce((s, p) => s + p[0], 0) / n;
+        const lon = it.latlngs.reduce((s, p) => s + p[1], 0) / n;
+        return { item: it, cellLat: Math.floor(lat / CLUSTER_CELL_DEG), cellLon: Math.floor(lon / CLUSTER_CELL_DEG) };
+      });
+    if (withCentroid.length < 2) return null;
+
+    const cellKey = (cLat, cLon) => `${cLat}:${cLon}`;
+    const occupied = new Map(); // cellKey → entries
+    withCentroid.forEach(e => {
+      const k = cellKey(e.cellLat, e.cellLon);
+      if (!occupied.has(k)) occupied.set(k, []);
+      occupied.get(k).push(e);
+    });
+
+    // Union-find over occupied cells, merging any pair of 8-adjacent occupied cells
+    const parent = new Map();
+    const find = k => { while (parent.get(k) !== k) k = parent.get(k); return k; };
+    const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+    occupied.forEach((_, k) => parent.set(k, k));
+
+    occupied.forEach((_, k) => {
+      const [cLat, cLon] = k.split(':').map(Number);
+      for (let dLat = -1; dLat <= 1; dLat++) {
+        for (let dLon = -1; dLon <= 1; dLon++) {
+          if (dLat === 0 && dLon === 0) continue;
+          const nk = cellKey(cLat + dLat, cLon + dLon);
+          if (occupied.has(nk)) union(k, nk);
+        }
+      }
+    });
+
+    const clusters = new Map(); // root → entries[]
+    occupied.forEach((entries, k) => {
+      const root = find(k);
+      if (!clusters.has(root)) clusters.set(root, []);
+      clusters.get(root).push(...entries);
+    });
+
+    if (clusters.size < 2) return null; // everything is already one region — no change in behavior
+
+    let best = null;
+    clusters.forEach(entries => {
+      if (!best || entries.length > best.length) best = entries;
+    });
+
+    const bounds = L.latLngBounds();
+    best.forEach(e => e.item.latlngs.forEach(p => bounds.extend(p)));
+    return bounds;
+  }
+
   function showOverview(items, callbacks) {
     ensureMap();
     clearRoute();
@@ -677,7 +775,13 @@ const MapManager = (() => {
     zoomEndHandler = updateOverviewDisplay;
     map.on('zoomend', zoomEndHandler);
 
-    if (allLatLngs.length) {
+    // Default the camera to wherever most of the library's routes are clustered
+    // (e.g. the Pyrenees, if that region holds more routes than the Alps) rather
+    // than always framing the full — possibly worldwide — extent of every route.
+    const dominantBounds = _dominantClusterBounds(items);
+    if (dominantBounds && dominantBounds.isValid()) {
+      try { map.fitBounds(dominantBounds, { padding: [32, 32] }); } catch (_) {}
+    } else if (allLatLngs.length) {
       try { map.fitBounds(L.latLngBounds(allLatLngs), { padding: [32, 32] }); } catch (_) {}
     }
 
@@ -888,5 +992,6 @@ const MapManager = (() => {
     showSkiForViewport, clearSkiResort,
     updatePrivacyZones,
     setPlaceAddMode, updatePlaces, hidePlaces,
+    setWaypointAddMode,
   };
 })();
