@@ -37,6 +37,7 @@ const Storage = (() => {
       const tx    = db.transaction(STORE, 'readwrite');
       const store = tx.objectStore(STORE);
       const data  = { ...route, updatedAt: new Date().toISOString() };
+      delete data._parsed; // transient in-memory cache of GPXParser.parse(); never persist a stale shape
       if (!data.createdAt) data.createdAt = data.updatedAt;
 
       let req;

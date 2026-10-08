@@ -220,7 +220,10 @@
     try {
       await Storage.init();
       const routes = await Storage.getAllRoutes();
-      savedRoutes = routes.map(r => ({ ...r, source: 'saved' }));
+      // Discard any _parsed cache loaded from storage — it may predate a GPXParser
+      // shape change (e.g. older records saved before waypoint support existed)
+      // and must never be trusted; always re-derive it from gpxText this session.
+      savedRoutes = routes.map(r => { const { _parsed, ...rest } = r; return { ...rest, source: 'saved' }; });
       if (savedRoutes.length > 0) backupNeeded = true;
     } catch (err) {
       console.warn('Storage init failed:', err.message);
