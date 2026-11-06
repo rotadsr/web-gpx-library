@@ -31,7 +31,16 @@ const Storage = (() => {
     });
   }
 
-  /** Save (insert or update) a route. Returns the record's id. */
+  function newUid() {
+    return (crypto.randomUUID && crypto.randomUUID()) ||
+      'r-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+  }
+
+  /**
+   * Save (insert or update) a route. Returns the record's id.
+   * Every record carries a stable `uid` (survives export/import, unlike the
+   * local autoincrement id) so incremental backups can track it as one file.
+   */
   function saveRoute(route) {
     return new Promise((resolve, reject) => {
       const tx    = db.transaction(STORE, 'readwrite');
@@ -42,15 +51,42 @@ const Storage = (() => {
 
       let req;
       if (typeof data.id === 'number') {
-        req = store.put(data);
+        // In-memory copies may predate uids; keep the stored one rather than dropping it.
+        const getReq = store.get(data.id);
+        getReq.onsuccess = e => {
+          const existing = e.target.result;
+          if (!data.uid) data.uid = (existing && existing.uid) || newUid();
+          req = store.put(data);
+          req.onsuccess = ev => resolve(ev.target.result);
+          req.onerror   = ev => reject(ev.target.error);
+        };
+        getReq.onerror = e => reject(e.target.error);
       } else {
         const d = { ...data };
         delete d.id;
+        if (!d.uid) d.uid = newUid();
         req = store.add(d);
+        req.onsuccess = e => resolve(e.target.result);
+        req.onerror   = e => reject(e.target.error);
       }
+    });
+  }
 
-      req.onsuccess = e => resolve(e.target.result);
-      req.onerror   = e => reject(e.target.error);
+  /** Give records saved before uids existed one. Doesn't touch updatedAt. */
+  function ensureUids() {
+    return new Promise((resolve, reject) => {
+      const tx  = db.transaction(STORE, 'readwrite');
+      const store = tx.objectStore(STORE);
+      const req = store.openCursor();
+      req.onsuccess = e => {
+        const cursor = e.target.result;
+        if (!cursor) return;
+        if (!cursor.value.uid) cursor.update({ ...cursor.value, uid: newUid() });
+        cursor.continue();
+      };
+      req.onerror = e => reject(e.target.error);
+      tx.oncomplete = () => resolve();
+      tx.onerror    = e => reject(e.target.error);
     });
   }
 
@@ -116,10 +152,13 @@ const Storage = (() => {
       await clearAll();
     }
 
+    const seenUids = new Set(mode === 'overwrite' ? [] : (await getAllRoutes()).map(r => r.uid));
     let count = 0;
     for (const route of routes) {
       const r = { ...route };
       delete r.id; // always insert as new record to avoid key conflicts
+      if (r.uid && seenUids.has(r.uid)) delete r.uid; // merged duplicate: gets a fresh uid
+      if (r.uid) seenUids.add(r.uid);
       await saveRoute(r);
       count++;
     }
@@ -138,5 +177,5 @@ const Storage = (() => {
     });
   }
 
-  return { init, saveRoute, getAllRoutes, deleteRoute, exportLibrary, importLibrary };
+  return { init, saveRoute, ensureUids, getAllRoutes, deleteRoute, exportLibrary, importLibrary };
 })();

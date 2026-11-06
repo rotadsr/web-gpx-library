@@ -94,7 +94,7 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - **Inline metadata editing** — click the pencil icon next to a route name, description, or author to edit in place; changes are saved immediately to the library and synced into the GPX file
 - **Export Library/import** — backup your library as JSON, restore with merge or overwrite; import directly from a GitHub repository. The export bundles routes, Places, custom Place categories, and per-route Logbook entries in a single file
 - **Bulk export GPX** — select any number of routes from the library and download each as an individual GPX file in one go
-- **Auto-backup to GitHub** — optionally push `gpx-library.json` to a private GitHub repository 30 seconds after any change (requires a PAT with `repo` + `gist` scopes); the backup includes Places and Logbook data alongside routes
+- **Auto-backup to GitHub** — optionally back up to a private GitHub repository 30 seconds after any change — one file per route, so only new or changed routes are uploaded and large libraries never hit GitHub's size limit (requires a PAT with `repo` + `gist` scopes); the backup includes Places and Logbook data alongside routes
 - **Backup failure visibility** — if a backup fails, the sidebar status pill shows the error (hover for the full message, e.g. a rejected token or a GitHub API error) and stays visible until the next successful backup, instead of only flashing a toast; click the pill to open Backup Settings and see the full error with its timestamp
 
 ### 🔍 Search & Filter
@@ -310,7 +310,9 @@ Two options are available under **"···"** → **Import** in the library heade
 - Click **"···"** → **Backup settings** in the library header
 - Enter a **repository name** (`username/repo-name`) and a **GitHub Personal Access Token** — both fields are validated inline before saving
 - Your token needs both `repo` and `gist` scopes — a link in the dialog opens GitHub's token creation page with the right scopes pre-filled. Accepted token formats: `ghp_…`, `github_pat_…`, `ghs_…`, `ghu_…`, `ghr_…`
-- Once saved, the library is automatically pushed as `gpx-library.json` to that repository 30 seconds after any change
+- Once saved, the library is automatically backed up to that repository 30 seconds after any change, as `gpx-library/manifest.json` (index, Places, categories) plus one `gpx-library/routes/<id>.json` per route
+- Only routes that were added or changed since the last backup are uploaded, and routes you delete are removed from the repository. The first backup of a large library uploads every route (one commit each) and may take a while; if it is interrupted it resumes where it stopped
+- Backups made with older versions (a single `gpx-library.json`) can still be imported; the first new backup writes the per-route layout and leaves the old file untouched
 - The sidebar shows a live status: **Backup in 30s…** → **Backing up…** → **✓ Backed up just now**
 - Use **"···"** → **Back up now** to trigger an immediate backup at any time
 - Leave the repository field empty and click Save to disable backup

@@ -524,16 +524,40 @@
     btn.textContent = 'Fetching…';
 
     try {
-      const resp = await fetch(`https://api.github.com/repos/${repo}/contents/gpx-library.json`, {
-        headers: { Authorization: `token ${pat}`, Accept: 'application/vnd.github+json' },
-      });
-      if (resp.status === 404) throw new Error('gpx-library.json not found in that repository.');
-      if (resp.status === 401) throw new Error('Invalid or expired token.');
-      if (!resp.ok) throw new Error(`GitHub error (${resp.status}).`);
+      const headers = { Authorization: `token ${pat}`, Accept: 'application/vnd.github+json' };
+      let text;
+      let manifest;
+      try {
+        manifest = await ghGetFile(repo, BACKUP_MANIFEST_PATH, headers);
+      } catch (err) {
+        if (err.message === 'token_rejected') throw new Error('Invalid or expired token.');
+        throw err;
+      }
 
-      const data  = await resp.json();
-      const bytes = Uint8Array.from(atob(data.content.replace(/\s/g, '')), c => c.charCodeAt(0));
-      const text  = new TextDecoder().decode(bytes);
+      if (manifest) {
+        // Per-route layout: fetch each route file (a few at a time) and reassemble.
+        const index  = JSON.parse(manifest.text);
+        const routes = new Array(index.routes.length);
+        let next = 0, done = 0;
+        const worker = async () => {
+          while (next < index.routes.length) {
+            const i = next++;
+            const file = await ghGetFile(repo, BACKUP_ROUTES_DIR + index.routes[i].uid + '.json', headers);
+            if (!file) throw new Error(`Backup is incomplete: route file ${index.routes[i].uid} is missing.`);
+            routes[i] = JSON.parse(file.text);
+            btn.textContent = `Fetching ${++done}/${index.routes.length}…`;
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(6, index.routes.length) }, worker));
+        text = JSON.stringify({ version: 1, routes, places: index.places, placeCategories: index.placeCategories });
+      } else {
+        // Older single-file backups
+        const legacy = await ghGetFile(repo, LEGACY_BACKUP_PATH, headers).catch(err => {
+          throw new Error(err.message === 'token_rejected' ? 'Invalid or expired token.' : err.message);
+        });
+        if (!legacy) throw new Error('No GPX Library backup found in that repository.');
+        text = legacy.text;
+      }
 
       // Save token if it wasn't stored yet
       if (!getPat() && patInput.value.trim()) setPat(patInput.value.trim());
@@ -5267,6 +5291,73 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     }
   }
 
+  // ── Incremental backup layout ────────────────────────────────────────────────
+  // GitHub rejects one giant gpx-library.json once the library grows, so each
+  // route is its own file and only routes whose content hash changed are pushed:
+  //   gpx-library/manifest.json        index (uid → content hash) + places/categories
+  //   gpx-library/routes/<uid>.json    one file per route
+  const BACKUP_MANIFEST_PATH = 'gpx-library/manifest.json';
+  const BACKUP_ROUTES_DIR    = 'gpx-library/routes/';
+  const LEGACY_BACKUP_PATH   = 'gpx-library.json'; // single-file layout, still readable on import
+  const MANIFEST_CHECKPOINT_EVERY = 50;
+
+  function ghFileUrl(repo, path) {
+    return 'https://api.github.com/repos/' + repo + '/contents/' + path;
+  }
+
+  async function sha256Hex(text) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // fetch() with a few retries when GitHub's rate limiter asks us to slow down.
+  async function ghFetch(url, options) {
+    for (let attempt = 0; ; attempt++) {
+      const resp = await fetch(url, options);
+      const limited = resp.status === 429 || (resp.status === 403 && resp.headers.get('Retry-After'));
+      if (!limited || attempt >= 3) return resp;
+      const wait = Math.min(Number(resp.headers.get('Retry-After')) || 30, 120);
+      await new Promise(r => setTimeout(r, wait * 1000));
+    }
+  }
+
+  // Returns { sha, text } or null when the file doesn't exist.
+  async function ghGetFile(repo, path, headers) {
+    const resp = await ghFetch(ghFileUrl(repo, path), { headers });
+    if (resp.status === 404) return null;
+    if (resp.status === 401) { clearPat(); throw new Error('token_rejected'); }
+    if (!resp.ok) throw new Error('Could not read ' + path + ' (' + resp.status + ': ' + await _ghErrorDetail(resp) + ')');
+    const meta = await resp.json();
+    let text;
+    if (meta.content) {
+      text = new TextDecoder().decode(Uint8Array.from(atob(meta.content.replace(/\s/g, '')), c => c.charCodeAt(0)));
+    } else { // >1 MB: the JSON response omits content, ask for the raw bytes
+      const raw = await ghFetch(ghFileUrl(repo, path), { headers: { ...headers, Accept: 'application/vnd.github.raw+json' } });
+      if (!raw.ok) throw new Error('Could not read ' + path + ' (' + raw.status + ')');
+      text = await raw.text();
+    }
+    return { sha: meta.sha, text };
+  }
+
+  // Create/update (sha given or looked up) a file. Returns the new blob sha.
+  async function ghPutFile(repo, path, text, headers, message) {
+    const existing = await ghGetFile(repo, path, headers);
+    const body = { message, content: utf8ToBase64(text) };
+    if (existing) body.sha = existing.sha;
+    const resp = await ghFetch(ghFileUrl(repo, path), { method: 'PUT', headers, body: JSON.stringify(body) });
+    if (resp.status === 401) { clearPat(); throw new Error('token_rejected'); }
+    if (!resp.ok) throw new Error('Backup of ' + path + ' failed (' + resp.status + ': ' + await _ghErrorDetail(resp) + ')');
+    return (await resp.json()).content.sha;
+  }
+
+  async function ghDeleteFile(repo, path, headers, message) {
+    const existing = await ghGetFile(repo, path, headers);
+    if (!existing) return;
+    const resp = await ghFetch(ghFileUrl(repo, path), { method: 'DELETE', headers, body: JSON.stringify({ message, sha: existing.sha }) });
+    if (resp.status === 401) { clearPat(); throw new Error('token_rejected'); }
+    if (!resp.ok && resp.status !== 404) throw new Error('Could not remove ' + path + ' (' + resp.status + ': ' + await _ghErrorDetail(resp) + ')');
+  }
+
   async function pushLibraryBackup() {
     const repo = getBackupRepo();
     const pat  = getPat();
@@ -5276,26 +5367,58 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     updateBackupStatus('syncing');
 
     try {
-      const json    = await Storage.exportLibrary({ places: getPlaces(), placeCategories: getCustomPlaceCategories() });
-      const content = utf8ToBase64(json);
-      const path    = 'gpx-library.json';
-      const apiBase = 'https://api.github.com/repos/' + repo + '/contents/' + path;
       const headers = { Authorization: 'token ' + pat, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' };
+      const day     = new Date().toISOString().slice(0, 10);
 
-      let sha;
-      const getResp = await fetch(apiBase, { headers });
-      if (getResp.ok) {
-        sha = (await getResp.json()).sha;
-      } else if (getResp.status !== 404) {
-        throw new Error('Could not check existing backup (' + getResp.status + ': ' + await _ghErrorDetail(getResp) + ')');
+      await Storage.ensureUids();
+      const local = new Map(); // uid → { name, text, hash }
+      for (const route of await Storage.getAllRoutes()) {
+        const { id, _parsed, ...record } = route; // local-only fields never go into the backup
+        const text = JSON.stringify(record);
+        local.set(route.uid, { name: route.name || '', text, hash: await sha256Hex(text) });
       }
 
-      const putBody = { message: 'GPX Library backup — ' + new Date().toISOString().slice(0, 10), content };
-      if (sha) putBody.sha = sha;
+      const remoteManifest = await ghGetFile(repo, BACKUP_MANIFEST_PATH, headers);
+      const remoteIndex = new Map(); // uid → hash, as currently stored in the repo
+      if (remoteManifest) {
+        for (const r of JSON.parse(remoteManifest.text).routes || []) remoteIndex.set(r.uid, r.hash);
+      }
 
-      const putResp = await fetch(apiBase, { method: 'PUT', headers, body: JSON.stringify(putBody) });
-      if (putResp.status === 401) { clearPat(); throw new Error('token_rejected'); }
-      if (!putResp.ok) throw new Error('Backup failed (' + putResp.status + ': ' + await _ghErrorDetail(putResp) + ')');
+      const places          = getPlaces();
+      const placeCategories = getCustomPlaceCategories();
+      const manifestText = () => JSON.stringify({
+        version: 2,
+        routes: [...remoteIndex].sort(([a], [b]) => a < b ? -1 : 1)
+          .map(([uid, hash]) => ({ uid, hash, name: local.has(uid) ? local.get(uid).name : '' })),
+        places,
+        placeCategories,
+      }, null, 1);
+      let lastManifestText = remoteManifest ? remoteManifest.text : null;
+      const writeManifest = async () => {
+        const text = manifestText();
+        if (text === lastManifestText) return;
+        await ghPutFile(repo, BACKUP_MANIFEST_PATH, text, headers, 'GPX Library backup index — ' + day);
+        lastManifestText = text;
+      };
+
+      // Upload only new/changed routes; checkpoint the manifest so a failure
+      // part-way through a big first backup resumes instead of starting over.
+      let uploaded = 0;
+      for (const [uid, entry] of local) {
+        if (remoteIndex.get(uid) === entry.hash) continue;
+        await ghPutFile(repo, BACKUP_ROUTES_DIR + uid + '.json', entry.text, headers, 'Backup route: ' + (entry.name || uid));
+        remoteIndex.set(uid, entry.hash);
+        if (++uploaded % MANIFEST_CHECKPOINT_EVERY === 0) await writeManifest();
+      }
+
+      // Routes deleted locally are removed from the repo too.
+      for (const uid of [...remoteIndex.keys()]) {
+        if (local.has(uid)) continue;
+        await ghDeleteFile(repo, BACKUP_ROUTES_DIR + uid + '.json', headers, 'Remove deleted route ' + uid);
+        remoteIndex.delete(uid);
+      }
+
+      await writeManifest();
 
       lastBackupAt = new Date();
       localStorage.setItem(BACKUP_LAST_KEY, lastBackupAt.toISOString());
