@@ -80,6 +80,14 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
 - Click a heatmap zone to zoom the map to fit that area
 - Click any route in the sidebar to exit overview and fly to that track; click the same route again to return to overview
 
+### 🎨 Multi-route view
+- **Select several routes and see them together** — open **"···"** → **Bulk export GPX**, tick routes and click **🗺 Show on map**; each route is drawn in its own colour with a legend
+- **Legend controls** — show/hide each route, pick a custom colour, click a name to zoom to it; combined distance and elevation gain update with what's visible
+- **Overlaid elevation profiles** — compare every selected route's profile on one chart (**📈 Profiles**)
+- **Comparison table** — distance, gain, max elevation, gradient, duration, speed and difficulty side by side (**📋 Compare**)
+- **Merge** the visible routes into one new route in your library (**🔗 Merge**); each source stays a separate track segment
+- **Sets** — save a selection as a named set (**⭐ Save set**) and re-select it later from the **Sets…** dropdown in selection mode (stored in this browser; only routes saved to My Library can be in a set). Deleting a route removes it from every set, and a set left empty is removed
+
 ### 📊 Detailed Route Analytics
 - **Elevation profile chart** — interactive graph showing elevation vs. distance
 - **Waypoints on the elevation profile** — each route waypoint appears as a dot directly on the elevation line, at its true position along the track; hovering near one adds its name to the chart tooltip alongside distance, elevation, and gradient
@@ -112,9 +120,9 @@ Try it live: https://rotadsr.github.io/web-gpx-library/
   - Combine any number of them, and mix with text search — e.g. `>20km <3% <100m` or `hiking >20km`
   - Active range filters show as removable chips below the search box
 - Semantic keyword expansion (e.g. "winter" finds all snow activities)
-- **Activity filter** — category pills (hiking, cycling, water sports, etc.) with icons
+- **My Sets folder** — saved sets appear as a second folder next to your routes, one collapsible sub-folder per set; typing words from a set's name in the search box (any order, e.g. `andorra trip` finds "Trip to Andorra") lists its routes too
 - **Difficulty filter** — sidebar section with 🟢 Easy / 🟡 Moderate / 🔴 Hard / ⚫ Expert pills
-- All filters (search, activity, difficulty) stack and work together
+- All filters (search, difficulty) stack and work together
 
 ### 🔒 Privacy Zones
 - Define any number of **safe zones** (home, family's place, etc.) — track points within each zone's radius are hidden when sharing
@@ -483,3 +491,13 @@ Found a bug or have a feature request? Open an issue on GitHub!
 ---
 
 **Built with ❤️ for outdoor enthusiasts** — enjoy mapping your adventures! 🏔️🚴🏃
+
+## Offline use
+A service worker caches the app and the map tiles you have viewed, so the library opens without a connection (map tiles only for areas seen before; search, weather and GitHub features need a network). On `localhost` it is off unless you open the page with `?sw=1`, so local edits aren't masked by cached files.
+
+## Development
+No build step — serve the folder with any static server (e.g. `python3 -m http.server`). Tests have no dependencies in the browser: open `tests/index.html`. To run them from the terminal, install `jsdom` somewhere outside the repo and run `NODE_PATH=/path/to/node_modules node tests/run-node.js`.
+
+## Security notes
+- The page ships a Content-Security-Policy (no inline scripts); all imported text (route names, tags, folders…) is HTML-escaped before display.
+- Your GitHub token is kept for the current tab only unless you tick **Remember on this device** — and automatic backups need that option to keep running after you close the tab.

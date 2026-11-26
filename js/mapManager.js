@@ -299,7 +299,7 @@ const MapManager = (() => {
         }),
         zIndexOffset: 300,
       }).addTo(map);
-      const esc   = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+      const esc = Util.escapeHtml;
       const title = esc(place.name || 'Unnamed place');
       const notes = place.notes ? `<p>${esc(place.notes)}</p>` : '';
       marker.bindPopup(`<div class="place-popup"><strong>${title}</strong>${notes}</div>`);
@@ -346,7 +346,7 @@ const MapManager = (() => {
     waypointMarkers = [];
     if (!waypoints || !waypoints.length) return;
 
-    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+    const esc = Util.escapeHtml;
 
     waypoints.forEach(wp => {
       const marker = L.circleMarker([wp.lat, wp.lon], { ...dot(WAYPOINT_COLOR), radius: 7, zIndexOffset: 400 })
@@ -361,7 +361,71 @@ const MapManager = (() => {
     });
   }
 
+
+  // ── Multi-route comparison (several library routes, one colour each) ─────────
+
+  const MULTI_ROUTE_COLORS = [
+    '#e6194b', '#3b82f6', '#16a34a', '#f58231', '#911eb4',
+    '#0891b2', '#d946ef', '#ca8a04', '#7c2d12', '#475569',
+  ];
+  let multiRouteLayers = [];
+
+  let multiRoutesClearedCb = null;
+  /** Lets the multi-route UI (legend, profile) tear itself down whenever the lines are cleared. */
+  function onMultiRoutesCleared(cb) { multiRoutesClearedCb = cb; }
+
+  function clearMultiRoutes() {
+    const had = multiRouteLayers.length > 0;
+    multiRouteLayers.forEach(l => { try { l.remove(); } catch (_) {} });
+    multiRouteLayers = [];
+    if (had && multiRoutesClearedCb) multiRoutesClearedCb();
+  }
+
+  /**
+   * Draws each item ({ name, points }) as its own coloured line + start dot and fits the map.
+   * Returns one handle per item: { color, setColor, setVisible, zoomTo } for the legend UI.
+   */
+  function showMultiRoutes(items) {
+    ensureMap();
+    map.invalidateSize();
+    clearRoute();
+    clearOverview();
+
+    const handles = items.map((item, i) => {
+      let color = MULTI_ROUTE_COLORS[i % MULTI_ROUTE_COLORS.length];
+      const latlngs = item.points.map(p => [p.lat, p.lon]);
+      const line = L.polyline(latlngs, { color, weight: 4, opacity: 0.9 }).addTo(map);
+      line.bindTooltip(Util.escapeHtml(item.name || 'Untitled route'), { sticky: true });
+      const start = L.circleMarker(latlngs[0], dot(color, 6)).addTo(map);
+      multiRouteLayers.push(line, start);
+      const handle = {
+        visible: true,
+        get color() { return color; },
+        setColor(c) { color = c; line.setStyle({ color: c }); start.setStyle({ fillColor: c }); },
+        setVisible(v) { handle.visible = v; [line, start].forEach(l => (v ? l.addTo(map) : l.remove())); },
+        zoomTo() { if (handle.visible) { map.fitBounds(line.getBounds(), { padding: [32, 32] }); line.bringToFront(); } },
+        bounds: () => line.getBounds(),
+      };
+      return handle;
+    });
+
+    const fitAll = () => {
+      const vis = handles.filter(h => h.visible);
+      if (!vis.length) return;
+      const b = L.latLngBounds([]);
+      vis.forEach(h => b.extend(h.bounds()));
+      map.fitBounds(b, { padding: [32, 32] });
+    };
+    fitAll();
+    handles.fitAll = fitAll;
+    if (_storedPrivacyZones.length) _renderPrivacyZones();
+    return handles;
+  }
+
+  function getMapContainerParent() { ensureMap(); return map.getContainer().parentElement; }
+
   function clearRoute() {
+    clearMultiRoutes();
     [trackLine, startMarker, endMarker, hoverMarker].forEach(m => { if (m) m.remove(); });
     trackLine = startMarker = endMarker = hoverMarker = null;
     waypointMarkers.forEach(m => { try { m.remove(); } catch (_) {} });
@@ -977,6 +1041,7 @@ const MapManager = (() => {
   return {
     ensureMap,
     showRoute, clearRoute,
+    showMultiRoutes, clearMultiRoutes, onMultiRoutesCleared, getMapContainerParent,
     setMapType, getLayers, getCurrentLayer,
     zoomIn, zoomOut,
     locateUser,

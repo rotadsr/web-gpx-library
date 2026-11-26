@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><title>GPX Library tests</title></head>
+<body style="font-family:monospace">
+<h3>GPX Library tests</h3><pre id="out"></pre>
+<script src="../js/util.js"></script>
+<script src="../js/gpxParser.js"></script>
+<script src="../js/gpxEdit.js"></script>
+<script>
+  const out = document.getElementById('out'); let failed = 0;
+  function assert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+  function assertEq(a, b, m) { if (a !== b) throw new Error((m || 'not equal') + ': ' + JSON.stringify(a) + ' !== ' + JSON.stringify(b)); }
+  function test(name, fn) {
+    try { fn(); out.textContent += 'PASS  ' + name + '\n'; }
+    catch (e) { failed++; out.textContent += 'FAIL  ' + name + '\n      ' + e.message + '\n'; }
+  }
+</script>
+<script src="cases.js"></script>
+<script>out.textContent += '\n' + (failed ? failed + ' failed' : 'all passed'); document.title = failed ? 'FAIL' : 'PASS';</script>
+</body></html>

@@ -6,12 +6,8 @@
   <title>GPX Library</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>" />
   <link rel="stylesheet" href="style.css" />
-  <script>
-    (function () {
-      var t = localStorage.getItem('gpxlib-theme');
-      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-    })();
-  </script>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src 'self' https:; worker-src 'self' blob:; child-src blob:; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <script src="js/theme-init.js"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4/dist/maplibre-gl.css" />
 </head>
@@ -59,11 +55,6 @@
         <div id="search-filter-chips"></div>
       </div>
 
-      <div id="activity-filter-section">
-        <h3>Activity</h3>
-        <div id="category-pills"></div>
-      </div>
-
       <div id="difficulty-filter-section" style="display:none">
         <h3>Difficulty</h3>
         <div id="difficulty-pills"></div>
@@ -89,9 +80,16 @@
             <input type="checkbox" id="bulk-export-select-all" />
             <span id="bulk-export-count">0 routes selected</span>
           </label>
+          <div class="bulk-export-sets">
+            <select id="bulk-collections-select" class="lib-action-btn" aria-label="Saved route sets"><option value="">Sets…</option></select>
+            <button id="btn-bulk-collection-save" class="lib-action-btn bulk-icon-btn" disabled title="Save ticked routes as a set" aria-label="Save ticked routes as a set"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="10" y1="10" x2="14" y2="10"/></svg></button>
+            <button id="btn-bulk-collection-manage" class="lib-action-btn bulk-icon-btn" title="Manage sets" aria-label="Manage sets"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+            <button id="btn-bulk-collection-delete" class="lib-action-btn bulk-icon-btn" disabled title="Delete the selected set" aria-label="Delete the selected set"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg></button>
+          </div>
           <div class="bulk-export-actions">
-            <button id="btn-bulk-export-download" class="lib-action-btn" disabled>⬇ Download GPX</button>
-            <button id="btn-bulk-export-cancel" class="lib-action-btn">Cancel</button>
+            <button id="btn-bulk-show-map" class="lib-action-btn bulk-icon-btn" disabled title="Show on map" aria-label="Show on map"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></button>
+            <button id="btn-bulk-export-download" class="lib-action-btn bulk-icon-btn" disabled title="Download GPX" aria-label="Download GPX"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
+            <button id="btn-bulk-export-cancel" class="lib-action-btn bulk-icon-btn" title="Cancel" aria-label="Cancel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
         </div>
         <div id="file-tree"></div>
@@ -450,12 +448,13 @@
     <div class="pat-input-row">
       <input type="password" id="pat-token-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
     </div>
+    <label class="pat-remember-row"><input type="checkbox" id="pat-remember-cb" /> Remember on this device (otherwise it is forgotten when you close the tab)</label>
     <p id="pat-error" class="pat-error"></p>
     <div class="pat-actions">
       <a href="https://github.com/settings/tokens/new?scopes=gist&description=GPX+Library+Share" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token on GitHub ↗</a>
       <button id="pat-save-btn" class="share-copy-btn">Save &amp; Share</button>
     </div>
-    <p class="pat-privacy-note">Your token is stored in this browser's localStorage and is only used to create Gists on your behalf.</p>
+    <p class="pat-privacy-note">Your token is kept in this browser only (for this tab unless you tick Remember) and is only used to create Gists on your behalf.</p>
   </div>
 </div>
 
@@ -559,6 +558,7 @@
       <span class="pat-field-label">GitHub token</span>
       <input type="password" id="backup-pat-input" class="share-url-input pat-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" />
     </label>
+    <label class="pat-remember-row"><input type="checkbox" id="backup-remember-cb" /> Remember on this device — required for automatic backups to keep running after you close the tab</label>
     <p id="backup-error" class="pat-error"></p>
     <div class="pat-actions">
       <a href="https://github.com/settings/tokens/new?scopes=repo,gist&description=GPX+Library" target="_blank" rel="noopener noreferrer" class="pat-gh-link">Create token with repo + gist scopes ↗</a>
@@ -913,10 +913,13 @@
 <!-- QR code generation -->
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <!-- App scripts -->
+<script src="js/util.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/gpxParser.js"></script>
+<script src="js/gpxEdit.js"></script>
 <script src="js/trackCreator.js"></script>
 <script src="js/mapManager.js"></script>
+<script src="js/multiRoute.js"></script>
 <script src="js/activities.js"></script>
 <script src="js/places.js"></script>
 <script src="js/view3d.js"></script>

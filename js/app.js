@@ -68,13 +68,9 @@
     return [...new Set([...fromRoutes, ...customFolders])].sort();
   }
 
-  // Escapes text for safe interpolation into innerHTML (used for any
-  // user-typed content, e.g. place names/notes/custom category labels).
-  function escapeHtml(str) {
-    return String(str).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-    }[c]));
-  }
+  const escapeHtml = Util.escapeHtml;
+  const { simplifyGpxForSharing, bakeOverrideDurationIntoGpx, patchGpxWaypoints, patchGpxMeta,
+          trimGpxToRange, reverseGpxTrack, buildMergedGpx, geoDistM } = GPXEdit;
 
   // Places (global map pins) — filter/mode state
   let activePlaceCategoryFilter = null; // null = show all categories
@@ -456,6 +452,7 @@
           applyImportedPlaceCategories(data.placeCategories, mode);
         });
         savedRoutes = (await Storage.getAllRoutes()).map(r => ({ ...r, source: 'saved' }));
+        if (mode === 'overwrite') pruneCollections(); // an overwrite can drop routes that sets still reference
         if (savedRoutes.length > 0) { backupNeeded = true; scheduleBackup(); }
         buildCategoryPills();
         renderFileTree();
@@ -628,7 +625,10 @@
 
   async function deleteFromLibrary(id) {
     try {
+      await ensureSavedUids();
+      const removedUid = savedRoutes.find(r => r.id === id)?.uid;
       await Storage.deleteRoute(id);
+      if (removedUid) removeUidsFromCollections([removedUid]);
       const wasActive = activeRouteId === id;
       savedRoutes = savedRoutes.filter(r => r.id !== id);
       if (wasActive) {
@@ -858,172 +858,8 @@
   /** Called by the editor when the user clicks "Save to Library". */
   // ── Inline field editing ──────────────────────────────────────────────────────
 
-  function bakeOverrideDurationIntoGpx(gpxText, durationSeconds) {
-    if (!gpxText || !durationSeconds) return gpxText;
-    const doc   = new DOMParser().parseFromString(gpxText, 'text/xml');
-    const gpxNs = 'http://www.topografix.com/GPX/1/1';
-    const ns    = doc.documentElement.namespaceURI || '';
 
-    function getTrkpts() {
-      const byNs = doc.getElementsByTagNameNS(gpxNs, 'trkpt');
-      return Array.from(byNs.length ? byNs : doc.getElementsByTagName('trkpt'));
-    }
-    function getTimeEl(trkpt) {
-      return trkpt.getElementsByTagNameNS(gpxNs, 'time')[0]
-          || trkpt.getElementsByTagName('time')[0]
-          || null;
-    }
 
-    const trkpts = getTrkpts();
-    if (trkpts.length < 2) return gpxText;
-
-    const existingTimes = trkpts.map(el => {
-      const t = getTimeEl(el);
-      return t ? new Date(t.textContent) : null;
-    });
-    const hasTimestamps = existingTimes.every(t => t && !isNaN(t.getTime()));
-
-    // Haversine in metres
-    function hav(lat1, lon1, lat2, lon2) {
-      const R = 6371000, r = Math.PI / 180;
-      const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
-      const a = Math.sin(dLat / 2) ** 2
-              + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
-      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    // Cumulative distances for proportional distribution
-    const lats = trkpts.map(el => parseFloat(el.getAttribute('lat')));
-    const lons = trkpts.map(el => parseFloat(el.getAttribute('lon')));
-    const cumDist = [0];
-    for (let i = 1; i < trkpts.length; i++)
-      cumDist.push(cumDist[i - 1] + hav(lats[i - 1], lons[i - 1], lats[i], lons[i]));
-    const totalDist = cumDist[cumDist.length - 1];
-
-    const durationMs = durationSeconds * 1000;
-    // Anchor: use first existing timestamp if available, otherwise "now − duration"
-    const startMs = hasTimestamps
-      ? existingTimes[0].getTime()
-      : Date.now() - durationMs;
-    const origSpanMs = hasTimestamps
-      ? existingTimes[existingTimes.length - 1].getTime() - existingTimes[0].getTime()
-      : 0;
-
-    for (let i = 0; i < trkpts.length; i++) {
-      let offsetMs;
-      if (hasTimestamps && origSpanMs > 0) {
-        // Preserve relative timing, just rescale to new total duration
-        offsetMs = Math.round(
-          (existingTimes[i].getTime() - existingTimes[0].getTime()) * durationMs / origSpanMs
-        );
-      } else {
-        // No timestamps (or zero-span): distribute proportionally by distance
-        offsetMs = totalDist > 0
-          ? Math.round((cumDist[i] / totalDist) * durationMs)
-          : Math.round((i / (trkpts.length - 1)) * durationMs);
-      }
-
-      const iso = new Date(startMs + offsetMs).toISOString();
-      let timeEl = getTimeEl(trkpts[i]);
-      if (!timeEl) {
-        timeEl = ns ? doc.createElementNS(ns, 'time') : doc.createElement('time');
-        trkpts[i].insertBefore(timeEl, trkpts[i].firstChild);
-      }
-      timeEl.textContent = iso;
-    }
-
-    return new XMLSerializer().serializeToString(doc);
-  }
-
-  // Replaces every top-level <wpt> in gpxText with the given waypoint list
-  // (each { lat, lon, ele, name, desc }). Used for add/edit/remove alike —
-  // callers always pass the full desired list and this reserializes once.
-  function patchGpxWaypoints(gpxText, waypoints) {
-    if (!gpxText) return gpxText;
-    const doc  = new DOMParser().parseFromString(gpxText, 'text/xml');
-    const root = doc.documentElement;
-    const ns   = root.namespaceURI || '';
-
-    Array.from(root.children)
-      .filter(child => child.localName === 'wpt')
-      .forEach(el => root.removeChild(el));
-
-    const trkEl = Array.from(root.children).find(child => child.localName === 'trk') || null;
-
-    waypoints.forEach(wp => {
-      const el = ns ? doc.createElementNS(ns, 'wpt') : doc.createElement('wpt');
-      el.setAttribute('lat', wp.lat);
-      el.setAttribute('lon', wp.lon);
-      if (wp.ele !== null && wp.ele !== undefined) {
-        const eleEl = ns ? doc.createElementNS(ns, 'ele') : doc.createElement('ele');
-        eleEl.textContent = wp.ele;
-        el.appendChild(eleEl);
-      }
-      if (wp.name) {
-        const nameEl = ns ? doc.createElementNS(ns, 'name') : doc.createElement('name');
-        nameEl.textContent = wp.name;
-        el.appendChild(nameEl);
-      }
-      if (wp.desc) {
-        const descEl = ns ? doc.createElementNS(ns, 'desc') : doc.createElement('desc');
-        descEl.textContent = wp.desc;
-        el.appendChild(descEl);
-      }
-      root.insertBefore(el, trkEl); // GPX schema requires wpt/rte before trk
-    });
-
-    return new XMLSerializer().serializeToString(doc);
-  }
-
-  function patchGpxMeta(gpxText, patches) {
-    if (!gpxText) return gpxText;
-    const doc  = new DOMParser().parseFromString(gpxText, 'text/xml');
-    const root = doc.documentElement;
-    const ns   = root.namespaceURI || '';
-
-    function childByTag(parent, tag) {
-      for (const child of parent.children) {
-        if (child.localName === tag) return child;
-      }
-      return null;
-    }
-    function setOrCreate(parent, tag, val) {
-      let el = childByTag(parent, tag);
-      if (!el) {
-        el = ns ? doc.createElementNS(ns, tag) : doc.createElement(tag);
-        parent.appendChild(el);
-      }
-      el.textContent = val;
-    }
-
-    let meta = childByTag(root, 'metadata');
-    function ensureMeta() {
-      if (!meta) {
-        meta = ns ? doc.createElementNS(ns, 'metadata') : doc.createElement('metadata');
-        root.insertBefore(meta, root.firstChild);
-      }
-      return meta;
-    }
-
-    if ('name' in patches) {
-      setOrCreate(ensureMeta(), 'name', patches.name ?? '');
-      for (const child of Array.from(root.children)) {
-        if (child.localName === 'trk') setOrCreate(child, 'name', patches.name ?? '');
-      }
-    }
-    if ('description' in patches) setOrCreate(ensureMeta(), 'desc', patches.description ?? '');
-    if ('author' in patches) {
-      const m = ensureMeta();
-      let a = childByTag(m, 'author');
-      if (!a) {
-        a = ns ? doc.createElementNS(ns, 'author') : doc.createElement('author');
-        m.appendChild(a);
-      }
-      setOrCreate(a, 'name', patches.author ?? '');
-    }
-
-    return new XMLSerializer().serializeToString(doc);
-  }
 
   async function saveRouteField(field, value) {
     const route = savedRoutes.find(r => r.id === activeRouteId)
@@ -1195,29 +1031,8 @@
 
   // ── Activity category pills ───────────────────────────────────────────────────
 
+  // Rebuilds the sidebar filter widgets (name kept: it is called after any change to the route list).
   function buildCategoryPills() {
-    const container = document.getElementById('category-pills');
-    container.innerHTML = '';
-
-    const allRoutes = [...getBrowsableSavedRoutes(), ...uploadedRoutes];
-    Object.entries(CATEGORIES).forEach(([key, cat]) => {
-      const hasRoutes = allRoutes.some(r => getActivityCategory(r.activity) === key);
-      if (!hasRoutes) return;
-
-      const btn = document.createElement('button');
-      btn.className = 'category-pill' + (activeCategory === key ? ' active' : '');
-      btn.dataset.category = key;
-      btn.innerHTML =
-        `<span class="category-pill-emoji">${cat.emoji}</span>${cat.name}`;
-      btn.title = cat.name;
-      btn.addEventListener('click', () => {
-        activeCategory = activeCategory === key ? null : key;
-        buildCategoryPills();
-        renderFileTree();
-      });
-      container.appendChild(btn);
-    });
-
     buildDifficultyPills();
     buildLogbookStatusPills();
   }
@@ -1425,6 +1240,9 @@
       appendFolderGroups(tree, filteredSaved);
     }
 
+    // ── My Sets ──
+    if (!bulkExportMode) appendSetsFolder(tree, filteredSaved);
+
     // ── Uploaded Routes (session-only) ──
     if (filteredUploads.length) {
       if (filteredSaved.length) {
@@ -1536,6 +1354,114 @@
     });
   }
 
+  // ── My Sets folder ───────────────────────────────────────────────────────────
+
+  const SVG_X   = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  const SVG_MAP = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>`;
+
+  let mySetsCollapsed = false;
+  const expandedSetIds = new Set(); // sets start collapsed so a big library stays compact
+
+  function removeRouteFromSet(setId, uid) {
+    if (!uid) return;
+    setCollections(getCollections()
+      .map(c => c.id === setId ? { ...c, uids: c.uids.filter(u => u !== uid) } : c)
+      .filter(c => c.uids.length > 0)); // a set left with no routes disappears
+    renderCollectionsSelect();
+  }
+
+  async function renameSet(setId) {
+    const col = getCollections().find(c => c.id === setId);
+    const name = col && await Util.promptText('Rename set', col.name, 'Rename');
+    if (!name) return;
+    setCollections(getCollections().map(c => c.id === setId ? { ...c, name } : c));
+    renderCollectionsSelect();
+  }
+
+  async function deleteSet(setId) {
+    const col = getCollections().find(c => c.id === setId);
+    if (!col) return;
+    const ok = await Util.confirmDialog(`Delete set "${col.name}"?`, 'The routes stay in your library; only the set is removed.', 'Delete set');
+    if (!ok) return;
+    setCollections(getCollections().filter(c => c.id !== setId));
+    renderCollectionsSelect();
+  }
+
+  function makeFolderActionBtn(svg, title, onClick) {
+    const btn = document.createElement('button');
+    btn.className = 'folder-action-btn';
+    btn.title = title;
+    btn.setAttribute('aria-label', title);
+    btn.innerHTML = svg;
+    btn.addEventListener('click', e => { e.stopPropagation(); onClick(); });
+    return btn;
+  }
+
+  // A second top-level folder next to the library folders: one collapsible sub-folder per saved set.
+  function appendSetsFolder(container, filteredSaved) {
+    const sets = getCollections();
+    if (!sets.length) return;
+    const byUid = new Map(filteredSaved.filter(r => r.uid).map(r => [r.uid, r]));
+    const filtering = !!searchQuery || !!activeDifficulty || !!activeLogbookStatus || !!activeCategory;
+    const entries = sets
+      .map(c => ({ set: c, routes: sortRoutes(c.uids.map(u => byUid.get(u)).filter(Boolean)) }))
+      .filter(e => !filtering || e.routes.length)
+      .sort((a, b) => a.set.name.localeCompare(b.set.name));
+    if (!entries.length) return;
+
+    const top = document.createElement('div');
+    top.className = 'folder-group sets-folder' + (mySetsCollapsed && !filtering ? ' collapsed' : '');
+    const topHeader = document.createElement('div');
+    topHeader.className = 'folder-header';
+    topHeader.innerHTML = '<span class="folder-icon">⭐</span><span class="folder-name">My Sets</span>' +
+      `<span class="folder-count">${entries.length}</span>`;
+    topHeader.addEventListener('click', () => {
+      top.classList.toggle('collapsed');
+      mySetsCollapsed = top.classList.contains('collapsed');
+    });
+    top.appendChild(topHeader);
+
+    const children = document.createElement('div');
+    children.className = 'sets-children';
+    entries.forEach(({ set, routes }) => {
+      const group = document.createElement('div');
+      const expanded = expandedSetIds.has(set.id) || filtering; // while searching, show what matched
+      group.className = 'folder-group set-group' + (expanded ? '' : ' collapsed');
+
+      const header = document.createElement('div');
+      header.className = 'folder-header';
+      const icon = document.createElement('span');
+      icon.className = 'folder-icon';
+      icon.textContent = '🗂';
+      const name = document.createElement('span');
+      name.className = 'folder-name';
+      name.textContent = set.name;
+      name.title = set.name;
+      const count = document.createElement('span');
+      count.className = 'folder-count';
+      count.textContent = routes.length;
+      const actions = document.createElement('div');
+      actions.className = 'folder-actions';
+      actions.appendChild(makeFolderActionBtn(SVG_MAP, 'Show this set on the map', () => showRoutesOnMap(routes.map(r => String(r.id)))));
+      actions.appendChild(makeFolderActionBtn(SVG_PENCIL, 'Rename set', () => renameSet(set.id)));
+      actions.appendChild(makeFolderActionBtn(SVG_TRASH, 'Delete set', () => deleteSet(set.id)));
+      header.append(icon, name, count, actions);
+      header.addEventListener('click', () => {
+        group.classList.toggle('collapsed');
+        if (group.classList.contains('collapsed')) expandedSetIds.delete(set.id); else expandedSetIds.add(set.id);
+      });
+      group.appendChild(header);
+
+      const list = document.createElement('ul');
+      list.className = 'route-list';
+      routes.forEach(r => list.appendChild(buildRouteItem(r, { setId: set.id })));
+      group.appendChild(list);
+      children.appendChild(group);
+    });
+    top.appendChild(children);
+    container.appendChild(top);
+  }
+
   function startFolderRename(nameSpan, currentName, iconSpan) {
     const input = document.createElement('input');
     input.className = 'folder-name-input';
@@ -1612,7 +1538,7 @@
     getAllFolderNames().forEach(f => {
       const item = document.createElement('div');
       item.className = 'folder-picker-item' + (route.folder === f ? ' current' : '');
-      item.innerHTML = `<span>${getFolderIcon(f)}</span><span>${f}</span>`;
+      item.innerHTML = `<span>${escapeHtml(getFolderIcon(f))}</span><span>${escapeHtml(f)}</span>`;
       if (route.folder !== f) {
         item.addEventListener('click', () => {
           picker.remove(); activeFolderPicker = null;
@@ -1721,7 +1647,7 @@
   const SVG_SAVE        = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>`;
   const SVG_MOVE_FOLDER = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><polyline points="9 14 12 17 15 14"/></svg>`;
 
-  function buildRouteItem(route) {
+  function buildRouteItem(route, ctx = {}) {
     const li = document.createElement('li');
     li.className = 'route-item' + (route.id === activeRouteId ? ' active' : '');
     if (bulkExportMode && bulkExportSelection.has(String(route.id))) li.className += ' bulk-selected';
@@ -1731,11 +1657,11 @@
       ? `${getActivityName(route.activity)} · click to change`
       : 'Click to set activity';
     li.innerHTML = `
-      <span class="route-icon route-icon-btn" title="${actTip}">${icon}</span>
+      <span class="route-icon route-icon-btn" title="${escapeHtml(actTip)}">${icon}</span>
       <span class="route-item-content">
-        <span class="route-name">${route.name}</span>
+        <span class="route-name">${escapeHtml(route.name)}</span>
         <div class="route-tags">
-          ${(route.tags || []).slice(0, 3).map(t => `<span class="route-tag">${t}</span>`).join('')}
+          ${(route.tags || []).slice(0, 3).map(t => `<span class="route-tag">${escapeHtml(t)}</span>`).join('')}
         </div>
       </span>`;
 
@@ -1752,7 +1678,16 @@
     const actions = document.createElement('div');
     actions.className = 'route-actions';
 
-    if (!bulkExportMode) {
+    if (!bulkExportMode && ctx.setId) {
+      // Inside a set: the only action is taking the route out of that set (the route itself stays in the library)
+      const rmBtn = document.createElement('button');
+      rmBtn.className = 'route-action-btn btn-route-unset';
+      rmBtn.title = 'Remove from this set';
+      rmBtn.setAttribute('aria-label', 'Remove from this set');
+      rmBtn.innerHTML = SVG_X;
+      rmBtn.addEventListener('click', e => { e.stopPropagation(); removeRouteFromSet(ctx.setId, route.uid); });
+      actions.appendChild(rmBtn);
+    } else if (!bulkExportMode) {
       // Yellow save button — uploaded routes only
       if (route.source === 'upload') {
         const saveBtn = document.createElement('button');
@@ -1914,6 +1849,18 @@
       chip.appendChild(removeBtn);
       container.appendChild(chip);
     });
+
+    // Sets whose name matches the typed text: show which ones are contributing routes.
+    const q = normalizeSearchText(parseNumericFilters(searchQuery).remainder).trim();
+    if (q) {
+      getCollections().filter(c => setMatchesQuery(c, q)).forEach(c => {
+        const chip = document.createElement('span');
+        chip.className = 'search-filter-chip search-set-chip';
+        chip.title = 'Routes in this set are included in the results';
+        chip.textContent = `⭐ ${c.name} · ${c.uids.length}`;
+        container.appendChild(chip);
+      });
+    }
   }
 
   const NUMERIC_FILTER_FIELD = {
@@ -1987,6 +1934,22 @@
   // in the search bar filters routes that have a matching logbook entry.
   const LOGBOOK_STATUS_KEYWORDS = { done: 'done', planned: 'planned', want: 'want', 'want to do': 'want' };
 
+  // A set matches when every word of the query appears in its name, in any order
+  // ("andorra trip" finds "Trip to Andorra").
+  function setMatchesQuery(set, query) {
+    const words = query.split(/\s+/).filter(Boolean);
+    if (!words.length) return false;
+    const name = normalizeSearchText(set.name);
+    return words.every(w => name.includes(w));
+  }
+
+  // uids of every route belonging to a saved set that matches the query
+  function uidsOfSetsMatching(query) {
+    const uids = new Set();
+    getCollections().forEach(c => { if (setMatchesQuery(c, query)) c.uids.forEach(u => uids.add(u)); });
+    return uids;
+  }
+
   function filterRoutes(routes) {
     const { filters: numFilters, remainder } = parseNumericFilters(searchQuery);
     const query = normalizeSearchText(remainder);
@@ -1994,6 +1957,7 @@
     const kwCats    = getKeywordCategories(remainder);
     const flagCC    = flagToCountryCode(remainder); // e.g. "FR" if query is 🇫🇷
     const statusKw  = LOGBOOK_STATUS_KEYWORDS[query];
+    const setUids   = uidsOfSetsMatching(query);
 
     return routes.filter(r => {
       const activityName = normalizeSearchText(getActivityName(r.activity));
@@ -2013,6 +1977,7 @@
         || activityName.includes(query)
         || catName.includes(query)
         || matchKeyword
+        || (r.uid && setUids.has(r.uid))
         || normalizeSearchText(locationCache[r.id]).includes(query)
         || (diffKw !== undefined && difficultyCache[r.id] === diffKw)
         || (statusKw !== undefined && routeHasLogbookStatus(r, statusKw))
@@ -2190,7 +2155,7 @@
     const grad = s.avgUphillGradient != null ? `${s.avgUphillGradient.toFixed(1)}%` : null;
     const statsLine = [dist, gain, grad].filter(Boolean).join(' · ');
     tooltip.innerHTML =
-      `<div class="ovt-name">${item.name}</div>` +
+      `<div class="ovt-name">${escapeHtml(item.name)}</div>` +
       (statsLine ? `<div class="ovt-stats">${statsLine}</div>` : '');
     tooltip.style.display = 'block';
   }
@@ -2219,127 +2184,12 @@
 
   // ── Track simplification ─────────────────────────────────────────────────────
 
-  // Haversine distance in metres
-  function geoDistM(a, b) {
-    const R = 6371000;
-    const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
-    const Δφ = (b.lat - a.lat) * Math.PI / 180;
-    const Δλ = (b.lon - a.lon) * Math.PI / 180;
-    const s = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-    return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
-  }
 
-  // Perpendicular distance (metres) from point p to segment [a,b] — planar approx
-  function perpDist(p, a, b) {
-    const C = Math.cos((a.lat + b.lat) / 2 * Math.PI / 180) * 111319;
-    const D = 111319;
-    const px = p.lon*C, py = p.lat*D;
-    const ax = a.lon*C, ay = a.lat*D;
-    const bx = b.lon*C, by = b.lat*D;
-    const dx = bx-ax, dy = by-ay;
-    if (dx === 0 && dy === 0) return Math.hypot(px-ax, py-ay);
-    const t = Math.max(0, Math.min(1, ((px-ax)*dx + (py-ay)*dy) / (dx*dx+dy*dy)));
-    return Math.hypot(px-ax-t*dx, py-ay-t*dy);
-  }
 
-  // Iterative Ramer-Douglas-Peucker (avoids call-stack overflow on large tracks)
-  function rdp(points, epsilon) {
-    const n = points.length;
-    if (n <= 2) return points.slice();
-    const keep = new Uint8Array(n);
-    keep[0] = keep[n-1] = 1;
-    const stack = [[0, n-1]];
-    while (stack.length) {
-      const [s, e] = stack.pop();
-      let maxD = 0, maxI = s;
-      for (let i = s+1; i < e; i++) {
-        const d = perpDist(points[i], points[s], points[e]);
-        if (d > maxD) { maxD = d; maxI = i; }
-      }
-      if (maxD > epsilon) {
-        keep[maxI] = 1;
-        stack.push([s, maxI], [maxI, e]);
-      }
-    }
-    return points.filter((_, i) => keep[i]);
-  }
 
-  // Remove GPS spike points: a point is a spike if going through it is >5× longer
-  // than skipping it AND the jump in is >100 m (avoids removing tight switchbacks)
-  function removeSpikes(points) {
-    if (points.length <= 2) return points.slice();
-    const out = [points[0]];
-    for (let i = 1; i < points.length-1; i++) {
-      const prev = out[out.length-1], curr = points[i], next = points[i+1];
-      const dIn = geoDistM(prev, curr), dOut = geoDistM(curr, next);
-      const dSkip = geoDistM(prev, next);
-      if (dIn > 100 && (dIn + dOut) > 5 * Math.max(dSkip, 1)) continue;
-      out.push(curr);
-    }
-    out.push(points[points.length-1]);
-    return out;
-  }
 
-  // Target max point count based on route distance
-  function targetPointCount(points) {
-    let d = 0;
-    const step = Math.max(1, Math.floor(points.length / 200));
-    for (let i = step; i < points.length; i += step) d += geoDistM(points[i-step], points[i]);
-    const km = d / 1000;
-    return km < 10 ? 1500 : km < 20 ? 2500 : 4000;
-  }
 
-  // De-spike → adaptive RDP until within target
-  function simplifyPoints(points) {
-    if (points.length <= 100) return points;
-    const cleaned = removeSpikes(points);
-    const target  = targetPointCount(cleaned);
-    if (cleaned.length <= target) return cleaned;
-    let epsilon = 5, result = cleaned;
-    while (result.length > target && epsilon <= 100) {
-      result  = rdp(cleaned, epsilon);
-      epsilon *= 2;
-    }
-    return result;
-  }
 
-  // Parse track points from a GPX XML string, simplify them, and return new XML
-  function simplifyGpxForSharing(xmlText) {
-    const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
-    if (doc.querySelector('parsererror')) return xmlText;
-
-    const ns  = 'http://www.topografix.com/GPX/1/1';
-    const get = (el, tag) =>
-      (el.getElementsByTagNameNS(ns, tag)[0] || el.getElementsByTagName(tag)[0])
-        ?.textContent.trim() ?? null;
-
-    let els = Array.from(doc.getElementsByTagNameNS(ns, 'trkpt'));
-    if (!els.length) els = Array.from(doc.getElementsByTagName('trkpt'));
-    if (els.length < 2) return xmlText;
-
-    const raw = els.map(el => ({
-      lat:  parseFloat(el.getAttribute('lat')),
-      lon:  parseFloat(el.getAttribute('lon')),
-      ele:  get(el, 'ele'),
-      time: get(el, 'time'),
-    })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
-
-    const simplified = simplifyPoints(raw);
-
-    const trkpts = simplified.map(p => {
-      let s = `\n      <trkpt lat="${p.lat.toFixed(6)}" lon="${p.lon.toFixed(6)}">`;
-      if (p.ele  !== null) s += `<ele>${p.ele}</ele>`;
-      if (p.time !== null) s += `<time>${p.time}</time>`;
-      return s + '</trkpt>';
-    }).join('');
-
-    // Replace trkseg content; first segment gets all points, extras are dropped
-    let first = true;
-    return xmlText.replace(/(<trkseg[^>]*>)[\s\S]*?(<\/trkseg>)/g, (_, open, close) => {
-      if (first) { first = false; return open + trkpts + '\n    ' + close; }
-      return '';
-    });
-  }
 
   // ── Shared mini-map basemap (privacy picker / share-trim picker) ───────────────
 
@@ -2499,7 +2349,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       const radius     = _formatRadius(z.radius || PRIVACY_RADIUS_DEFAULT);
       return `<div class="privacy-zone-item">
         <span class="privacy-zone-icon">📍</span>
-        <span class="privacy-zone-name privacy-zone-name-editable" data-id="${z.id}" title="${titleAttr}">${label}</span>
+        <span class="privacy-zone-name privacy-zone-name-editable" data-id="${z.id}" title="${escapeHtml(titleAttr)}">${escapeHtml(label)}</span>
         <span class="privacy-zone-radius">${radius}</span>
         <button class="privacy-zone-edit" data-id="${z.id}" title="Edit location/radius">✎</button>
         <button class="privacy-zone-remove" data-id="${z.id}" title="Remove zone">✕</button>
@@ -4262,9 +4112,22 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   // ── Share via GitHub Gist ─────────────────────────────────────────────────────
 
   const PAT_KEY = 'gpxlib-gist-token';
-  function getPat()    { return localStorage.getItem(PAT_KEY) || null; }
-  function setPat(tok) { localStorage.setItem(PAT_KEY, tok.trim()); }
-  function clearPat()  { localStorage.removeItem(PAT_KEY); }
+  // By default the token lives in sessionStorage (gone when the tab closes), which limits
+  // what a script-injection bug could steal. "Remember on this device" opts into
+  // localStorage, which scheduled auto-backups need to keep working across visits.
+  const PAT_REMEMBER_KEY = 'gpxlib-remember-token';
+  function isPatRemembered() {
+    return localStorage.getItem(PAT_REMEMBER_KEY) === '1' || localStorage.getItem(PAT_KEY) !== null;
+  }
+  function getPat()    { return sessionStorage.getItem(PAT_KEY) || localStorage.getItem(PAT_KEY) || null; }
+  function setPat(tok, remember = isPatRemembered()) {
+    const t = tok.trim();
+    sessionStorage.removeItem(PAT_KEY);
+    localStorage.removeItem(PAT_KEY);
+    if (remember) { localStorage.setItem(PAT_KEY, t); localStorage.setItem(PAT_REMEMBER_KEY, '1'); }
+    else          { sessionStorage.setItem(PAT_KEY, t); localStorage.removeItem(PAT_REMEMBER_KEY); }
+  }
+  function clearPat()  { sessionStorage.removeItem(PAT_KEY); localStorage.removeItem(PAT_KEY); }
 
   async function validatePat(pat) {
     const resp = await fetch('https://api.github.com/user', {
@@ -4315,8 +4178,10 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const a    = document.createElement('a');
     a.href     = url;
     a.download = filename;
+    document.body.appendChild(a); // detached anchors are unreliable in Firefox/Safari
     a.click();
-    URL.revokeObjectURL(url);
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000); // revoking immediately can cancel the download
   }
 
   // ── Bulk export GPX ──────────────────────────────────────────────────────────
@@ -4324,6 +4189,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   function startBulkExport() {
     bulkExportMode = true;
     bulkExportSelection.clear();
+    renderCollectionsSelect();
     document.getElementById('library-header').style.display   = 'none';
     document.getElementById('bulk-export-bar').style.display   = '';
     updateBulkExportBar();
@@ -4331,6 +4197,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   }
 
   function cancelBulkExport() {
+    closeManageSets();
     bulkExportMode = false;
     bulkExportSelection.clear();
     document.getElementById('library-header').style.display   = '';
@@ -4362,6 +4229,10 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     if (label) label.textContent = count === 1 ? '1 route selected' : `${count} routes selected`;
     const dlBtn = document.getElementById('btn-bulk-export-download');
     if (dlBtn) dlBtn.disabled = count === 0;
+    const saveSetBtn = document.getElementById('btn-bulk-collection-save');
+    if (saveSetBtn) saveSetBtn.disabled = count === 0;
+    const mapBtn = document.getElementById('btn-bulk-show-map');
+    if (mapBtn) mapBtn.disabled = count === 0;
     const selectAllCb = document.getElementById('bulk-export-select-all');
     if (selectAllCb) {
       const totalVisible = document.querySelectorAll('#file-tree .route-item').length;
@@ -4387,6 +4258,258 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     return resp.text();
   }
 
+  // ── Multi-route view: collections, merge, compare ─────────────────────────────
+
+  const COLLECTIONS_KEY = 'gpxlib-collections';
+  function getCollections() {
+    try { return JSON.parse(localStorage.getItem(COLLECTIONS_KEY) || '[]'); } catch (_) { return []; }
+  }
+  function setCollections(list) { localStorage.setItem(COLLECTIONS_KEY, JSON.stringify(list)); }
+
+  // Drops the given route uids from every set; a set left with no routes is removed too.
+  function removeUidsFromCollections(uids) {
+    const gone = new Set(uids);
+    const before = getCollections();
+    const after = before
+      .map(c => ({ ...c, uids: c.uids.filter(u => !gone.has(u)) }))
+      .filter(c => c.uids.length > 0);
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    setCollections(after);
+  }
+
+  // Removes uids that no longer correspond to a saved route (call only once savedRoutes is freshly loaded).
+  function pruneCollections() {
+    const live = new Set(savedRoutes.map(r => r.uid).filter(Boolean));
+    const stale = new Set();
+    getCollections().forEach(c => c.uids.forEach(u => { if (!live.has(u)) stale.add(u); }));
+    if (stale.size) removeUidsFromCollections([...stale]);
+  }
+
+  function renderCollectionsSelect() {
+    const sel = document.getElementById('bulk-collections-select');
+    if (!sel) return;
+    const list = getCollections();
+    sel.innerHTML = '<option value="">Sets…</option>' +
+      list.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)} (${c.uids.length})</option>`).join('');
+    sel.disabled = list.length === 0;
+    if (!bulkExportMode) renderFileTree(); // the My Sets folder in the tree mirrors the saved sets
+    document.getElementById('btn-bulk-collection-delete').disabled = true;
+  }
+
+  function applyCollectionToSelection(id) {
+    const col = getCollections().find(c => c.id === id);
+    if (!col) return;
+    bulkExportSelection.clear();
+    let missing = 0;
+    col.uids.forEach(uid => {
+      const route = savedRoutes.find(r => r.uid === uid);
+      if (route) bulkExportSelection.add(String(route.id)); else missing++;
+    });
+    renderFileTree();
+    updateBulkExportBar();
+    if (missing) showShareToast(`${missing} route${missing !== 1 ? 's' : ''} in this set no longer exist.`);
+  }
+
+  // Routes saved during this session don't carry their stored uid in memory yet.
+  async function ensureSavedUids() {
+    if (!savedRoutes.some(r => !r.uid)) return;
+    try {
+      const stored = new Map((await Storage.getAllRoutes()).map(r => [r.id, r.uid]));
+      savedRoutes.forEach(r => { if (!r.uid && stored.has(r.id)) r.uid = stored.get(r.id); });
+    } catch (_) {}
+  }
+
+  // uids of the selected routes that live in My Library (uploads can't be in a set), plus how many were skipped.
+  async function selectedUidsForSet() {
+    await ensureSavedUids();
+    const ids = Array.from(bulkExportSelection);
+    const uids = [];
+    ids.forEach(id => {
+      const r = savedRoutes.find(x => String(x.id) === id);
+      if (r && r.uid) uids.push(r.uid);
+    });
+    return { uids, skipped: ids.length - uids.length };
+  }
+
+  async function saveUidsAsCollection(uids, skipped) {
+    if (!uids.length) { showShareToast('Only routes saved to My Library can be added to a set.'); return; }
+    const name = await Util.promptText('Save these routes as a set', '', 'Save set');
+    if (!name) return;
+    const list = getCollections();
+    list.push({ id: 'c' + Date.now().toString(36), name, uids });
+    setCollections(list);
+    renderCollectionsSelect();
+    showShareToast(`Saved set "${name}"` + (skipped ? ` (${skipped} unsaved upload${skipped !== 1 ? 's' : ''} skipped)` : '.'));
+  }
+
+  // From the map legend: the shown routes already carry their uids.
+  async function saveSelectionAsCollection(items) {
+    await ensureSavedUids();
+    const uids = items.map(it => it.uid).filter(Boolean);
+    return saveUidsAsCollection(uids, items.length - uids.length);
+  }
+
+  // From the selection bar: save whatever is ticked, no need to open the map first.
+  async function saveTickedRoutesAsCollection() {
+    if (!bulkExportSelection.size) return;
+    const { uids, skipped } = await selectedUidsForSet();
+    return saveUidsAsCollection(uids, skipped);
+  }
+
+  // ── Manage sets dialog ───────────────────────────────────────────────────────
+
+  function closeManageSets() {
+    document.getElementById('manage-sets-modal')?.remove();
+  }
+
+  function openManageSets() {
+    closeManageSets();
+    const overlay = document.createElement('div');
+    overlay.id = 'manage-sets-modal';
+    overlay.className = 'share-overlay';
+    overlay.innerHTML =
+      '<div class="share-dialog manage-sets-dialog" role="dialog" aria-modal="true" aria-labelledby="manage-sets-title">' +
+      '<div class="share-dialog-header"><h3 id="manage-sets-title">Manage sets</h3>' +
+      '<button type="button" class="share-close-btn" aria-label="Close">✕</button></div>' +
+      '<p class="share-dialog-hint">A set is a named group of routes from My Library. ' +
+      '<strong>Update</strong> replaces a set\'s routes with the ones currently ticked in the list.</p>' +
+      '<div class="manage-sets-list"></div></div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('.share-close-btn').onclick = closeManageSets;
+    overlay.addEventListener('click', e => { if (e.target === overlay) closeManageSets(); });
+    renderManageSets();
+  }
+
+  function renderManageSets() {
+    const box = document.querySelector('#manage-sets-modal .manage-sets-list');
+    if (!box) return;
+    const sets = getCollections();
+    if (!sets.length) {
+      box.innerHTML = '<p class="privacy-zones-empty">No sets yet. Tick some routes and use the "save as set" button.</p>';
+      return;
+    }
+    const svg = d => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+    const ICON_RENAME = svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>');
+    const ICON_UPDATE = svg('<polyline points="23 4 23 10 17 10"/><path d="M20.5 15a9 9 0 1 1-2.1-9.4L23 10"/>');
+    box.innerHTML = sets.map(c => {
+      const names = c.uids.map(uid => {
+        const r = savedRoutes.find(x => x.uid === uid);
+        return r ? `<li>${escapeHtml(r.name || 'Untitled route')}</li>` : '<li class="manage-sets-missing">Route no longer in library</li>';
+      }).join('');
+      return `<div class="manage-sets-item" data-id="${escapeHtml(c.id)}">
+        <div class="privacy-zone-item">
+          <span class="privacy-zone-name"><strong>${escapeHtml(c.name)}</strong> <span class="manage-sets-count">${c.uids.length} route${c.uids.length !== 1 ? 's' : ''}</span></span>
+          <button type="button" class="privacy-zone-edit manage-sets-rename" title="Rename" aria-label="Rename set">${ICON_RENAME}</button>
+          <button type="button" class="privacy-zone-edit manage-sets-update" title="Replace this set's routes with the ticked ones" aria-label="Update set with ticked routes">${ICON_UPDATE}</button>
+          <button type="button" class="privacy-zone-remove manage-sets-delete" title="Delete set" aria-label="Delete set">${SVG_TRASH}</button>
+        </div>
+        <details class="manage-sets-routes"><summary>Show routes</summary><ul>${names}</ul></details>
+      </div>`;
+    }).join('');
+
+    box.querySelectorAll('.manage-sets-item').forEach(item => {
+      const id = item.dataset.id;
+      item.querySelector('.manage-sets-rename').addEventListener('click', async () => {
+        const col = getCollections().find(c => c.id === id);
+        const name = col && await Util.promptText('Rename set', col.name, 'Rename');
+        if (!name) return;
+        setCollections(getCollections().map(c => c.id === id ? { ...c, name } : c));
+        renderManageSets(); renderCollectionsSelect();
+      });
+      item.querySelector('.manage-sets-update').addEventListener('click', async () => {
+        if (!bulkExportSelection.size) { showShareToast('Tick the routes you want in this set first.'); return; }
+        const { uids, skipped } = await selectedUidsForSet();
+        if (!uids.length) { showShareToast('Only routes saved to My Library can be added to a set.'); return; }
+        setCollections(getCollections().map(c => c.id === id ? { ...c, uids } : c));
+        renderManageSets(); renderCollectionsSelect();
+        showShareToast(`Set updated (${uids.length} route${uids.length !== 1 ? 's' : ''}` + (skipped ? `, ${skipped} unsaved skipped` : '') + ').');
+      });
+      armDeleteBtn(item.querySelector('.manage-sets-delete'), () => {
+        setCollections(getCollections().filter(c => c.id !== id));
+        renderManageSets(); renderCollectionsSelect();
+      });
+    });
+  }
+
+
+  async function mergeSelectedRoutes(items) {
+    if (items.length < 2) { showShareToast('Show at least two routes to merge them.'); return; }
+    const defaultName = 'Merged: ' + items.map(it => it.name || 'Untitled').join(' + ').slice(0, 90);
+    const name = await Util.promptText('Merge into one new route', defaultName, 'Merge & save');
+    if (!name) return;
+    await saveCreatedTrack({ name, gpxText: buildMergedGpx(items, name) });
+    showShareToast(`Created "${name}" in My Library.`);
+  }
+
+  function multiRouteCompareColumns() {
+    return [
+      { label: 'Distance',   get: it => fmtDist(it.distanceKm) },
+      { label: 'Elev. gain', get: it => '+' + fmtElev(it.gainM) },
+      { label: 'Max elev.',  get: it => it.stats.maxElevation != null ? fmtElev(it.stats.maxElevation) : '—' },
+      { label: 'Avg grade',  get: it => it.stats.avgUphillGradient != null ? it.stats.avgUphillGradient.toFixed(1) + '%' : '—' },
+      { label: 'Duration',   get: it => it.stats.totalTime ? GPXParser.formatDuration(it.stats.totalTime) : '—' },
+      { label: 'Avg speed',  get: it => it.stats.avgSpeed != null ? fmtSpeed(it.stats.avgSpeed) : '—' },
+      { label: 'Difficulty', get: it => it.difficulty ? it.difficulty.charAt(0).toUpperCase() + it.difficulty.slice(1) : '—' },
+    ];
+  }
+
+  async function showSelectedRoutesOnMap() {
+    return showRoutesOnMap(Array.from(bulkExportSelection));
+  }
+
+  // ids: route ids (as strings) to draw together on the map, one colour each
+  async function showRoutesOnMap(ids) {
+    if (!ids.length) return;
+    const all = [...savedRoutes, ...uploadedRoutes];
+    const items = [];
+    await ensureSavedUids();
+    for (const id of ids) {
+      const route = all.find(r => String(r.id) === id);
+      if (!route) continue;
+      try {
+        const parsed = route._parsed || (route._parsed = GPXParser.parse(await resolveRouteGpxText(route)));
+        if (parsed.points.length < 2) continue;
+        let difficulty = null;
+        try { difficulty = calcDifficulty(parsed.stats, route.activity || null); } catch (_) {}
+        items.push({
+          name: route.name || parsed.metadata.name,
+          uid: route.source === 'saved' ? route.uid : null,
+          points: parsed.points,
+          stats: parsed.stats,
+          profile: GPXParser.buildElevationProfile(parsed.points, parsed.stats, 300),
+          distanceKm: parsed.stats.totalDistance || 0,
+          gainM: parsed.stats.elevationGain || 0,
+          difficulty,
+        });
+      } catch (err) {
+        console.error('Could not load route for map', route.name, err);
+      }
+    }
+    if (!items.length) { showShareToast('None of the selected routes could be displayed.'); return; }
+
+    if (bulkExportMode) cancelBulkExport();
+    if (overviewMode) exitOverview();
+    if (trackCreatorActive) exitTrackCreatorMode();
+    View3D.hide();
+    activeRouteId = null;
+    document.querySelectorAll('.route-item').forEach(el => el.classList.remove('active'));
+    showRouteView();
+    const imperial = units === 'imperial';
+    MultiRoute.show(items, {
+      formatSummary: vis => {
+        if (!vis.length) return 'No routes shown';
+        const km = vis.reduce((t, r) => t + r.distanceKm, 0);
+        const up = vis.reduce((t, r) => t + r.gainM, 0);
+        return `${vis.length} route${vis.length !== 1 ? 's' : ''} · ${fmtDist(km)} · +${fmtElev(up)}`;
+      },
+      distFactor: imperial ? KM_TO_MI : 1, distLabel: imperial ? 'mi' : 'km',
+      elevFactor: imperial ? M_TO_FT : 1,  elevLabel: imperial ? 'ft' : 'm',
+      columns: multiRouteCompareColumns(),
+      onMerge: mergeSelectedRoutes,
+      onSaveCollection: saveSelectionAsCollection,
+    });
+  }
+
   async function exportSelectedRoutesAsGpx() {
     const ids = Array.from(bulkExportSelection);
     if (!ids.length) return;
@@ -4400,7 +4523,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       } catch (err) {
         console.error('Bulk export failed for', route.name, err);
       }
-      if (i < routes.length - 1) await new Promise(r => setTimeout(r, 300));
+      if (i < routes.length - 1) await new Promise(r => setTimeout(r, 600));
     }
     cancelBulkExport();
   }
@@ -4480,14 +4603,6 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     }
   }
 
-  function trimGpxToRange(xmlText, startIdx, endIdx) {
-    const doc  = new DOMParser().parseFromString(xmlText, 'application/xml');
-    const ns   = 'http://www.topografix.com/GPX/1/1';
-    let els    = Array.from(doc.getElementsByTagNameNS(ns, 'trkpt'));
-    if (!els.length) els = Array.from(doc.getElementsByTagName('trkpt'));
-    els.forEach((el, i) => { if (i < startIdx || i > endIdx) el.parentNode.removeChild(el); });
-    return new XMLSerializer().serializeToString(doc);
-  }
 
   function openShareTrimPicker(trackPoints, startIdx, endIdx, mode = 'share') {
     trimPickerMode  = mode;
@@ -4615,30 +4730,6 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     openShareTrimPicker(trackPoints, 0, trackPoints.length - 1, 'edit');
   }
 
-  function reverseGpxTrack(gpxText) {
-    if (!gpxText) return gpxText;
-    const doc   = new DOMParser().parseFromString(gpxText, 'application/xml');
-    const ns    = 'http://www.topografix.com/GPX/1/1';
-
-    let segments = Array.from(doc.getElementsByTagNameNS(ns, 'trkseg'));
-    if (!segments.length) segments = Array.from(doc.getElementsByTagName('trkseg'));
-    if (!segments.length) return gpxText;
-
-    segments.forEach(seg => {
-      let pts = Array.from(seg.getElementsByTagNameNS(ns, 'trkpt'));
-      if (!pts.length) pts = Array.from(seg.getElementsByTagName('trkpt'));
-      pts.forEach(el => {
-        const timeEl = el.getElementsByTagNameNS(ns, 'time')[0] || el.getElementsByTagName('time')[0];
-        if (timeEl) timeEl.parentNode.removeChild(timeEl);
-      });
-      for (let i = pts.length - 1; i >= 0; i--) seg.appendChild(pts[i]);
-    });
-
-    const parent = segments[0].parentNode;
-    for (let i = segments.length - 1; i >= 0; i--) parent.appendChild(segments[i]);
-
-    return new XMLSerializer().serializeToString(doc);
-  }
 
   async function applyRouteReversal() {
     const route = savedRoutes.find(r => r.id === activeRouteId)
@@ -4949,6 +5040,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
     const modal = document.getElementById('pat-modal');
     document.getElementById('pat-token-input').value = '';
     document.getElementById('pat-error').textContent = '';
+    document.getElementById('pat-remember-cb').checked = isPatRemembered();
     const saveBtn = document.getElementById('pat-save-btn');
     saveBtn.disabled = false;
     saveBtn.textContent = 'Save & Share';
@@ -4976,7 +5068,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
 
     try {
       await validatePat(pat);
-      setPat(pat);
+      setPat(pat, document.getElementById('pat-remember-cb').checked);
       closePatModal();
       shareRoute();
     } catch (err) {
@@ -5486,6 +5578,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
   function openBackupModal() {
     document.getElementById('backup-repo-input').value = getBackupRepo();
     document.getElementById('backup-pat-input').value  = getPat() || '';
+    document.getElementById('backup-remember-cb').checked = isPatRemembered();
     document.getElementById('backup-error').textContent = '';
 
     const lastErrEl = document.getElementById('backup-last-error');
@@ -5561,7 +5654,7 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       if (repoResp.status === 404) throw new Error('Repository not found. Make sure it exists and your token can access it.');
       if (!repoResp.ok) throw new Error('Could not access repository (' + repoResp.status + ')');
 
-      setPat(pat);
+      setPat(pat, document.getElementById('backup-remember-cb').checked);
       setBackupRepo(repo);
       closeBackupModal();
       scheduleBackup();
@@ -7068,6 +7161,19 @@ let editingZoneId  = null; // zone id being edited, or null for add mode
       bulkExportSelectAll(e.currentTarget.checked);
     });
     document.getElementById('btn-bulk-export-download').addEventListener('click', exportSelectedRoutesAsGpx);
+    document.getElementById('btn-bulk-show-map').addEventListener('click', showSelectedRoutesOnMap);
+    document.getElementById('bulk-collections-select').addEventListener('change', e => {
+      document.getElementById('btn-bulk-collection-delete').disabled = !e.target.value;
+      if (e.target.value) applyCollectionToSelection(e.target.value);
+    });
+    document.getElementById('btn-bulk-collection-save').addEventListener('click', saveTickedRoutesAsCollection);
+    document.getElementById('btn-bulk-collection-manage').addEventListener('click', openManageSets);
+    document.getElementById('btn-bulk-collection-delete').addEventListener('click', () => {
+      const id = document.getElementById('bulk-collections-select').value;
+      if (!id) return;
+      setCollections(getCollections().filter(c => c.id !== id));
+      renderCollectionsSelect();
+    });
     document.getElementById('btn-bulk-export-cancel').addEventListener('click', cancelBulkExport);
 
     // Layout controls
