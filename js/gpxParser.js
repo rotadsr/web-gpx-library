@@ -55,6 +55,12 @@ const GPXParser = (() => {
         : doc.getElementsByTagName('trkpt')
     );
 
+    // Malformed <ele>/<time> values become null instead of NaN / Invalid Date,
+    // so one bad point can't poison the stats (NaN propagates through sums).
+    const parseEle  = el => { const v = el ? parseFloat(el.textContent) : NaN; return isFinite(v) ? v : null; };
+    const parseTime = el => { const d = el ? new Date(el.textContent) : null; return d && !isNaN(d) ? d : null; };
+    const validCoord = (lat, lon) => isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+
     const points = trkptEls.map(el => {
       const eleEl = el.getElementsByTagNameNS(ns, 'ele')[0]
                  || el.getElementsByTagName('ele')[0];
@@ -63,10 +69,10 @@ const GPXParser = (() => {
       return {
         lat: parseFloat(el.getAttribute('lat')),
         lon: parseFloat(el.getAttribute('lon')),
-        ele: eleEl ? parseFloat(eleEl.textContent) : null,
-        time: timeEl ? new Date(timeEl.textContent) : null,
+        ele: parseEle(eleEl),
+        time: parseTime(timeEl),
       };
-    }).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+    }).filter(p => validCoord(p.lat, p.lon));
 
     const stats = computeStats(points);
 
@@ -83,11 +89,11 @@ const GPXParser = (() => {
       return {
         lat:  parseFloat(el.getAttribute('lat')),
         lon:  parseFloat(el.getAttribute('lon')),
-        ele:  eleEl ? parseFloat(eleEl.textContent) : null,
+        ele:  parseEle(eleEl),
         name: getText(el, 'name'),
         desc: getText(el, 'desc') || getText(el, 'cmt'),
       };
-    }).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+    }).filter(p => validCoord(p.lat, p.lon));
 
     // Snap each waypoint to its nearest track point so it can be plotted on
     // the elevation profile (distance along track) even though <wpt> entries
@@ -206,5 +212,5 @@ const GPXParser = (() => {
     return `${s}s`;
   }
 
-  return { parse, buildElevationProfile, formatDuration };
+  return { parse, buildElevationProfile, formatDuration, haversine };
 })();
